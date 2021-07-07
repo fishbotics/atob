@@ -12,6 +12,9 @@ class Bullet:
         self.urdf_path = None
         self.obstacle_ids = []
 
+    def __del__(self):
+        p.disconnect(self.clid)
+
     def reload(self):
         p.disconnect(self.clid)
         self.clid = p.connect(p.GUI)
@@ -20,9 +23,7 @@ class Bullet:
         self.obstacle_ids = []
 
     def load_robot(self, path):
-        self.robot_id = p.loadURDF(
-            path, useFixedBase=True, physicsClientId=self.clid
-        )
+        self.robot_id = p.loadURDF(path, useFixedBase=True, physicsClientId=self.clid)
         self.urdf_path = path
 
     def load_cuboids(self, cuboids):
@@ -109,4 +110,6 @@ class Bullet:
 
     def marionette(self, config):
         for i in range(1, 8):
-            p.resetJointState(self.robot_id, i, config[i - 1], physicsClientId=self.clid)
+            p.resetJointState(
+                self.robot_id, i, config[i - 1], physicsClientId=self.clid
+            )

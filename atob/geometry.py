@@ -1,4 +1,6 @@
-from pyquaternion import Quaternion 
+from pyquaternion import Quaternion
+import numpy as np
+
 
 class Cuboid:
     def __init__(self, center, dims, quaternion):
@@ -21,17 +23,17 @@ class Cuboid:
     def xyzw(self):
         return self._quaternion.vector.tolist() + [self._quaternion.scalar]
 
-    @property 
+    @property
     def wxyz(self):
         return [self._quaternion.scalar] + self._quaternion.vector.tolist()
 
     @property
     def center(self):
-        return self._center.to_list()
+        return self._center.tolist()
 
-    @property 
+    @property
     def half_extents(self):
-        return (self._dims / 2).to_list()
+        return (self._dims / 2).tolist()
 
 
 class Sphere:
@@ -41,7 +43,7 @@ class Sphere:
 
     @property
     def center(self):
-        return self._center.to_list()
+        return self._center.tolist()
 
     @property
     def radius(self):
