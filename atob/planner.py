@@ -115,5 +115,5 @@ class Planner:
         if solved:
             if interpolate:
                 path.interpolate()
-            return path_as_python(pdef.getSolutionPath())
+            return path_as_python(pdef.getSolutionPath(), FrankaRobot.DOF)
         return False
