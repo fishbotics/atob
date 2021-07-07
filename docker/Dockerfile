@@ -11,7 +11,6 @@ RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y --no-install-rec
 RUN wget --no-check-certificate https://ompl.kavrakilab.org/core/install-ompl-ubuntu.sh
 RUN chmod u+x install-ompl-ubuntu.sh
 RUN ./install-ompl-ubuntu.sh --python
-RUN pip3 install ipython pybullet
 
 RUN update-alternatives --install /usr/bin/vi vi /usr/bin/nvim 60 \
   && update-alternatives --config vi \
@@ -19,6 +18,8 @@ RUN update-alternatives --install /usr/bin/vi vi /usr/bin/nvim 60 \
   && update-alternatives --config vim \
   && update-alternatives --install /usr/bin/editor editor /usr/bin/nvim 60 \
   && update-alternatives --config editor
+
+RUN pip3 install ipython pybullet pyquaternion
 
 RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v1.1.1/zsh-in-docker.sh)"
 RUN echo "alias ll='ls -lhaFtr'" >> ~/.zshrc
