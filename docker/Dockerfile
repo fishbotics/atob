@@ -1,15 +1,49 @@
-FROM ubuntu:20.04
+FROM nvidia/cudagl:11.1.1-devel-ubuntu20.04
 
-RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends \
+# Set variables
+ARG USERNAME
+ARG USER_ID
+
+# Set environment variables
+ENV PATH="/home/$USERNAME/.local/bin:${PATH}"
+
+# Set environment variables necessary to execute Click CLI commands in the docker image
+ENV LC_ALL=C.UTF-8
+ENV LANG=C.UTF-8
+
+
+# See: https://github.com/phusion/baseimage-docker/issues/58
+RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
+
+# Install some basic things
+RUN apt update && apt install -y --no-install-recommends \
+  tzdata
+
+RUN ln -fs /usr/share/zoneinfo/America/Los_Angeles /etc/localtime
+RUN echo "America/Los_Angeles" > /etc/timezone
+RUN dpkg-reconfigure -f noninteractive tzdata
+
+# Add sudo command
+RUN apt update && apt-get install sudo
+
+# Set up sudo user
+# RUN adduser --disabled-password --uid $USER_ID --gecos '' $USERNAME
+RUN adduser --disabled-password --gecos '' $USERNAME
+RUN adduser $USERNAME sudo
+RUN echo '%sudo ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
+USER $USERNAME
+WORKDIR /home/$USERNAME
+
+RUN sudo apt update && sudo apt install -y --no-install-recommends \
   tmux \
   wget \
   htop \
   neovim \
   lsb-release \
-  python3-neovim \
-  && apt-get clean && rm -rf /var/lib/apt
+  python3-neovim
 
-RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y --no-install-recommends \
+# This is all stuff needed for OMPL, taken from https://ompl.kavrakilab.org/core/install-ompl-ubuntu.sh
+RUN sudo apt update && sudo apt install -y --no-install-recommends \
   g++ \
   make \
   cmake \
@@ -29,11 +63,11 @@ RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y --no-install-rec
   python3-numpy \
 # Python 19.10 or greater, otherwise you need special commands
   castxml \
-  pypy3 \
-# Back to normal
-  && apt-get clean && rm -rf /var/lib/apt
+  pypy3
 
-# RUN wget https://boostorg.jfrog.io/artifactory/main/release/1.76.0/source/boost_1_76_0.tar.bz2
+
+# Back to normal
+RUN sudo apt-get clean && sudo rm -rf /var/lib/apt
 
 RUN python3 -m pip install -vU https://github.com/CastXML/pygccxml/archive/develop.zip pyplusplus
 
@@ -45,23 +79,15 @@ RUN export MAKEFLAGS="-j `nproc`"
 RUN cmake ../.. -DPYTHON_EXEC=/usr/bin/python3
 RUN make update_bindings
 RUN make
-RUN make install
+RUN sudo make install
 WORKDIR /
 
-
-
-# These commands don't need to be run because now the commands are part of the docker file,
-# but they are left in for posterity in case it stops working in the future
-# RUN wget --no-check-certificate https://ompl.kavrakilab.org/core/install-ompl-ubuntu.sh
-# RUN chmod u+x install-ompl-ubuntu.sh
-# RUN ./install-ompl-ubuntu.sh --python
-
-RUN update-alternatives --install /usr/bin/vi vi /usr/bin/nvim 60 \
-  && update-alternatives --config vi \
-  && update-alternatives --install /usr/bin/vim vim /usr/bin/nvim 60 \
-  && update-alternatives --config vim \
-  && update-alternatives --install /usr/bin/editor editor /usr/bin/nvim 60 \
-  && update-alternatives --config editor
+RUN sudo update-alternatives --install /usr/bin/vi vi /usr/bin/nvim 60 \
+  && sudo update-alternatives --config vi \
+  && sudo update-alternatives --install /usr/bin/vim vim /usr/bin/nvim 60 \
+  && sudo update-alternatives --config vim \
+  && sudo update-alternatives --install /usr/bin/editor editor /usr/bin/nvim 60 \
+  && sudo update-alternatives --config editor
 
 RUN python3 -m pip install ipython pybullet pyquaternion
 
@@ -71,4 +97,5 @@ RUN echo "alias ta='tmux attach-session -dt'" >> ~/.zshrc
 RUN echo "alias tn='tmux new -s'" >> ~/.zshrc
 RUN echo "alias sl='du -sh * | sort -h'" >> ~/.zshrc
 RUN echo "set-option -g default-shell /bin/zsh" >> ~/.tmux.conf
-ENV PYTHONPATH=/atob:$PYTHONPATH
+ENV PYTHONPATH=/home/atob:$PYTHONPATH
+COPY /home/fishy/.config/nvim/init.vim /home/fishy/nvim/init.vim
