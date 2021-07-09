@@ -98,4 +98,3 @@ RUN echo "alias tn='tmux new -s'" >> ~/.zshrc
 RUN echo "alias sl='du -sh * | sort -h'" >> ~/.zshrc
 RUN echo "set-option -g default-shell /bin/zsh" >> ~/.tmux.conf
 ENV PYTHONPATH=/home/atob:$PYTHONPATH
-COPY /home/fishy/.config/nvim/init.vim /home/fishy/nvim/init.vim
