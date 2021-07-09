@@ -3,6 +3,7 @@ from ompl import geometric as og
 
 from atob.bullet import Bullet
 from atob.errors import ConfigurationError, CollisionError
+import time
 
 
 class FrankaRobot:
@@ -26,8 +27,8 @@ def path_as_python(path, dof):
 
 
 class Planner:
-    def __init__(self, urdf_path):
-        self.bullet = Bullet(gui=False)
+    def __init__(self, urdf_path, gui=False):
+        self.bullet = Bullet(gui=gui)
         self.bullet.load_robot(urdf_path)
         self._scene_created = False
 
@@ -111,9 +112,12 @@ class Planner:
         optimizing_planner.setProblemDefinition(pdef)
         optimizing_planner.setup()
 
+        start_time = time.time()
         solved = optimizing_planner.solve(max_runtime)
+        print(f"Time elapsed: {time.time() - start_time}")
         if solved:
+            path = pdef.getSolutionPath()
             if interpolate:
                 path.interpolate()
-            return path_as_python(pdef.getSolutionPath(), FrankaRobot.DOF)
+            return path_as_python(path, FrankaRobot.DOF)
         return False

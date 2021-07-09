@@ -5,12 +5,14 @@ import time
 
 class Bullet:
     def __init__(self, gui=False):
-        if gui:
+        self.use_gui = gui
+        if self.use_gui:
             self.clid = p.connect(p.GUI)
         else:
             self.clid = p.connect(p.DIRECT)
         self.urdf_path = None
         self.obstacle_ids = []
+        self.obstacle_collision_ids = []
 
     def __del__(self):
         p.disconnect(self.clid)
@@ -32,13 +34,16 @@ class Bullet:
         ids = []
         for cuboid in cuboids:
             assert isinstance(cuboid, Cuboid)
-            # obstacle_visual_id = p.createVisualShape(
-            #     shapeType=p.GEOM_BOX,
-            #     halfExtents=cuboid.half_extents,
-            #     rgbaColor=[1, 1, 1, 1],
-            #     physicsClientId=self.clid,
-            # )
-            obstacle_collision_id = p.createVisualShape(
+            kwargs = {}
+            if self.use_gui:
+                obstacle_visual_id = p.createVisualShape(
+                    shapeType=p.GEOM_BOX,
+                    halfExtents=cuboid.half_extents,
+                    rgbaColor=[1, 1, 1, 1],
+                    physicsClientId=self.clid,
+                ) 
+                kwargs['baseVisualShapeIndex'] = obstacle_visual_id
+            obstacle_collision_id = p.createCollisionShape(
                 shapeType=p.GEOM_BOX,
                 halfExtents=cuboid.half_extents,
                 physicsClientId=self.clid,
@@ -46,17 +51,19 @@ class Bullet:
             obstacle_id = p.createMultiBody(
                 basePosition=cuboid.center,
                 baseOrientation=cuboid.xyzw,
-                # baseVisualShapeIndex=obstacle_visual_id,
                 baseCollisionShapeIndex=obstacle_collision_id,
                 physicsClientId=self.clid,
+                **kwargs,
             )
             ids.append(obstacle_id)
         self.obstacle_ids.extend(ids)
+        self.obstacle_collision_ids.extend(ids)
         if len(ids) == 1:
             return ids[0]
         return ids
 
     def load_spheres(self, spheres):
+        # TODO add visualization logic to sphere
         if isinstance(spheres, Sphere):
             spheres = [spheres]
 
@@ -69,7 +76,7 @@ class Bullet:
             #     rgbaColor=[0, 0, 0, 1],
             #     physicsClientId=self.clid,
             # )
-            obstacle_collision_id = p.createVisualShape(
+            obstacle_collision_id = p.createCollisionShape(
                 shapeType=p.GEOM_SPHERE,
                 radius=sphere.radius,
                 physicsClientId=self.clid,
