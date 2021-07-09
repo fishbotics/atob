@@ -11,11 +11,35 @@ cd $HOME/atob
 ```
 Now, you have to build the docker container. This requires you have docker installed. Building will take a while. If a step fails, it may be a network problem, so try rerunning it. If it still fails, post an issue on this Github.
 ```
-docker build -f docker/Dockerfile -t atob . --network=host
+docker build \                                                                                                                                                                                                                                   ─╯
+  --build-arg "USERNAME=$USER" \
+  --tag atob \
+  --network=host \
+  --file docker/Dockerfile \
+  .
 ```
-After it builds, run the container as follows
+After it builds, run the container as follows (change the path to this repo to
+match where you cloned it on your local system
 ```
-docker run -it --rm --net=host -v $HOME/atob/:/atob atob /bin/zsh
+docker run \                                                                                                                                                                                                                                     ─╯
+  --interactive \
+  --tty \
+  --rm \
+  --user $USER \
+  --privileged \
+  --gpus all \
+  --network host \
+  --env DISPLAY=unix$DISPLAY \
+  --env XAUTHORITY \
+  --env NVIDIA_DRIVER_CAPABILITIES=all \
+  --env LC_ALL=C.UTF-8 \
+  --env LANG=C.UTF-8 \
+  --volume /tmp/.X11-unix:/tmp/.X11-unix \
+  --volume /dev/input:/dev/input \
+  --volume $HOME/atob/:/atob \
+  --workdir /atob \
+  atob \
+  /bin/zsh
 ```
 Once inside the docker container, you can pull up a Python shell with `ipython` or `python3` and then run:
 ```
