@@ -9,9 +9,14 @@ import os
 import h5py
 from pathlib import Path
 from pyquaternion import Quaternion
+from termcolor import colored
 
 PATH_LENGTH = 300
-PATHS_PER_FILE = 25000
+PATHS_PER_FILE = 10000
+
+
+def log(msg):
+    print(colored(msg, "blue"))
 
 
 def roll_pitch_yaw(m):
@@ -445,6 +450,10 @@ def random_cabinet(planner):
         return None, None
     if planner.gui:
         planner.bullet.marionette(start)
+        dist = (
+            environment.start[:3, 3]
+            - planner.bullet.link_frames["panda_grasptarget"][:3, 3]
+        )
         time.sleep(3)
         for q in path:
             planner.bullet.marionette(q)
@@ -663,9 +672,9 @@ def main():
     size = PATHS_PER_FILE * len(files_to_join)
     with h5py.File(f"data/train.hdf5", "w") as f:
         paths = f.create_dataset("robot_configurations", (size, 300, 7))
-        dims = f.create_dataset("obstacle_dims", (size, 1, 3))
-        centers = f.create_dataset("obstacle_centers", (size, 1, 3))
-        quats = f.create_dataset("obstacle_quaternions", (size, 1, 4))
+        dims = f.create_dataset("obstacle_dims", (size, 7, 3))
+        centers = f.create_dataset("obstacle_centers", (size, 7, 3))
+        quats = f.create_dataset("obstacle_quaternions", (size, 7, 4))
 
         for ii, fi in enumerate(files_to_join):
             with h5py.File(fi, "r") as g:
@@ -688,11 +697,11 @@ def main():
 
 if __name__ == "__main__":
     noOutputHandler()
-    # main()
+    main()
     # file_names = Queue()
     # process_random_cabinet(0, file_names)
     # planner.reset()
     # np.random.seed(0)
-    planner = Planner(gui=True)
-    random_cabinet(planner)
-    planner.reset()
+    # planner = Planner(gui=False)
+    # random_cabinet(planner)
+    # planner.reset()

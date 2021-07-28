@@ -71,7 +71,7 @@ class Bullet:
         for i in range(retries + 1):
             solution = p.calculateInverseKinematics(
                 bodyUniqueId=self.robot_id,
-                endEffectorLinkIndex=8,
+                endEffectorLinkIndex=11,
                 targetPosition=position,
                 targetOrientation=xyzw,
                 lowerLimits=lower_limits,
@@ -83,6 +83,7 @@ class Bullet:
             if np.alltrue(arr >= np.array(lower_limits)) and np.alltrue(
                 arr <= np.array(upper_limits)
             ):
+                self.marionette(solution[:7])
                 return solution[:7]
             self.marionette(solution[:7])
 
