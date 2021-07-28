@@ -2,22 +2,10 @@ from ompl import base as ob
 from ompl import geometric as og
 
 from atob.bullet import Bullet
+from atob.franka import FrankaRobot
 from atob.errors import ConfigurationError, CollisionError
 import time
-
-
-class FrankaRobot:
-    # TODO remove this after making this more general
-    JOINT_LIMITS = [
-        (-2.8973, 2.8973),
-        (-1.7628, 1.7628),
-        (-2.8973, 2.8973),
-        (-3.0718, -0.0698),
-        (-2.8973, 2.8973),
-        (-0.0175, 3.7525),
-        (-2.8973, 2.8973),
-    ]
-    DOF = 7
+import numpy as np
 
 
 def path_as_python(path, dof):
@@ -27,10 +15,15 @@ def path_as_python(path, dof):
 
 
 class Planner:
-    def __init__(self, urdf_path, gui=False):
+    def __init__(self, urdf_path=None, gui=False):
+        self.gui = gui
         self.bullet = Bullet(gui=gui)
-        self.bullet.load_robot(urdf_path)
+        self.bullet.load_robot(
+            **({"urdf_path": urdf_path} if urdf_path is not None else {})
+        )
         self._scene_created = False
+        self.total_collision_checking_time = 0
+        self.collision_check_counts = 0
 
     def reset(self):
         self.bullet.clear_all_obstacles()
@@ -41,8 +34,13 @@ class Planner:
         self._scene_created = True
 
     def _not_in_collision(self, q):
+        current_time = time.time()
         self.bullet.marionette(q)
-        return not self.bullet.in_collision()
+        ret = not self.bullet.in_collision()
+        total_time = time.time() - current_time
+        self.total_collision_checking_time += total_time
+        self.collision_check_counts += 1
+        return ret
 
     def check_within_range(self, q):
         # TODO Fix this to apply to multiple robots
@@ -52,7 +50,7 @@ class Planner:
                 raise ConfigurationError(ii, q[ii], FrankaRobot.JOINT_LIMITS[ii])
         return
 
-    def plan(self, start, goal, max_runtime=5.0, interpolate=False):
+    def plan(self, start, goal, max_runtime=1.0, interpolate=0, verbose=False, rrt=False):
         # TODO This currently only works for the Franka because I was too lazy
         # to set it up for other robots
 
@@ -108,16 +106,38 @@ class Planner:
         )
 
         # Set up the actual planner and give it the problem
-        optimizing_planner = og.BITstar(space_information)
+        if rrt:
+            optimizing_planner = og.RRT(space_information)
+        else:
+            optimizing_planner = og.ABITstar(space_information)
+            optimizing_planner.setUseKNearest(False)
         optimizing_planner.setProblemDefinition(pdef)
         optimizing_planner.setup()
 
         start_time = time.time()
+        # solved = optimizing_planner.solve(ob.CostConvergenceTerminationCondition(pdef))
         solved = optimizing_planner.solve(max_runtime)
-        print(f"Time elapsed: {time.time() - start_time}")
-        if solved:
-            path = pdef.getSolutionPath()
-            if interpolate:
-                path.interpolate()
-            return path_as_python(path, FrankaRobot.DOF)
-        return False
+        if verbose:
+            print(f"Planning time: {time.time() - start_time}")
+            print(
+                f"Average collision check time: {self.total_collision_checking_time / self.collision_check_counts}"
+            )
+            print(f"Total collision check time: {self.total_collision_checking_time}")
+        if not solved:
+            return None
+        path = pdef.getSolutionPath()
+
+        simplifier = og.PathSimplifier(space_information)
+        start_time = time.time()
+        simplifier.shortcutPath(path)
+        simplifier.smoothBSpline(path)
+        if verbose:
+            print(f"Smoothing time: {time.time() - start_time}")
+
+        if interpolate > 0:
+            path.interpolate(interpolate)
+        path = path_as_python(path, FrankaRobot.DOF)
+        if not np.allclose(np.array(path[-1]), np.array(goal), atol=0.01):
+            print(np.array(path) - np.array(goal))
+            return None
+        return path

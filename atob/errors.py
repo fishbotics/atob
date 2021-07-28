@@ -13,4 +13,4 @@ class CollisionError(Exception):
         self.q = q
 
     def __str__(self):
-        return f"Configuration with value {q} in collision in environment"
+        return f"Configuration with value {self.q} in collision in environment"

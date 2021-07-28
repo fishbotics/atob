@@ -21,17 +21,16 @@ def test1():
         1.73707844,
         2.30240395,
     ]
-    planner = Planner(
-        '/atob/urdf/franka_panda/panda.urdf', 
-        # gui=True
-    )
+    planner = Planner(gui=True)
     obstacle = Cuboid(
         [0.5, 0, 0.3], 
         [0.2, 0.2, 0.5], 
         [1, 0, 0, 0],
     )
     planner.create_scene([obstacle])
-    path = planner.plan(start=start, goal=goal, interpolate=True)
+    path = planner.plan(start=start, goal=goal, interpolate=40)
+    planner.bullet.marionette(start)
+    time.sleep(3)
     for q in path: 
         planner.bullet.marionette(q)
         time.sleep(0.1)
