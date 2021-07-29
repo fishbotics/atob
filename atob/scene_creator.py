@@ -2,6 +2,7 @@ from atob.planner import Planner, FrankaRobot
 from atob.geometry import Cuboid
 import numpy as np
 import time
+from datetime import timedelta
 import multiprocessing as mp
 from multiprocessing import Queue, Process
 from ompl.util import noOutputHandler
@@ -440,7 +441,7 @@ def random_cabinet(planner):
         return None, None
     try:
         path = planner.plan(
-            start=start, goal=goal, interpolate=PATH_LENGTH, max_runtime=5
+            start=start, goal=goal, interpolate=PATH_LENGTH, max_runtime=2
         )
     except Exception as e:
         print(e)
@@ -474,6 +475,7 @@ def process_random_cabinet(seed, file_names):
     data = []
 
     file_names.put(f"data/in_process_data_gen_{seed}.hdf5")
+    start_time = time.time()
 
     with h5py.File(f"data/in_process_data_gen_{seed}.hdf5", "w-") as f:
         paths = f.create_dataset("robot_configurations", (PATHS_PER_FILE, 300, 7))
@@ -490,9 +492,11 @@ def process_random_cabinet(seed, file_names):
                     centers[count, ii, :] = np.array(obstacle.center)
                     quats[count, ii, :] = np.array(obstacle.wxyz)
                 count += 1
-                if count % 1000 == 0:
+                if count % 10000 == 0:
                     f.flush()
-                    print(f"PID {os.getpid()}: Completed {count}/{PATHS_PER_FILE}")
+                    time_elapsed = timedelta(seconds=time.time() - start_time)
+
+                    print(f"PID {os.getpid()}: Completed {count}/{PATHS_PER_FILE} in {time_elapsed}")
             planner.reset()
     return
 
