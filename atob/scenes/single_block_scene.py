@@ -32,6 +32,14 @@ class SingleBlockScene:
         self._target = self._random_eff_pose()
         return True
 
+    @property
+    def start(self):
+        return self._start
+
+    @property
+    def target(self):
+        return self._target
+
     def _random_eff_pose(self):
         transform_matrix = np.eye(4)
 
