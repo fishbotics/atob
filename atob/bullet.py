@@ -5,6 +5,7 @@ import numpy as np
 from pyquaternion import Quaternion
 import time
 from atob.franka import FrankaRobot
+from pathlib import Path
 
 
 class Bullet:
@@ -24,6 +25,15 @@ class Bullet:
     def __del__(self):
         p.disconnect(self.clid)
 
+    def load_robot(self, urdf_path):
+        raise NotImplementedError("Must implement robot loading for specific robot")
+
+    def is_robot_loaded(self):
+        return self.robot_id is not None
+
+    def marionette(self, config):
+        raise NotImplementedError("Marionette not implemented")
+
     def reload(self):
         p.disconnect(self.clid)
         self.clid = p.connect(p.GUI)
@@ -31,74 +41,6 @@ class Bullet:
         if self.urdf_path is not None:
             self.load_robot(self.urdf_path)
         self.obstacle_ids = []
-
-    def load_robot(self, urdf_path="franka_panda/panda.urdf"):
-        if self.robot_id is not None:
-            print("There is already a robot loaded. Removing and reloading")
-            p.removeBody(self.robot_id, physicsClientId=self.clid)
-        self.robot_id = p.loadURDF(
-            urdf_path,
-            useFixedBase=True,
-            physicsClientId=self.clid,
-        )
-        self.urdf_path = urdf_path
-
-        # Code snippet borrowed from https://pybullet.org/Bullet/phpBB3/viewtopic.php?t=12728
-        self._link_name_to_index = {
-            p.getBodyInfo(self.robot_id, physicsClientId=self.clid)[0].decode(
-                "UTF-8"
-            ): -1
-        }
-        for _id in range(p.getNumJoints(self.robot_id, physicsClientId=self.clid)):
-            _name = p.getJointInfo(self.robot_id, _id, physicsClientId=self.clid)[
-                12
-            ].decode("UTF-8")
-            self._link_name_to_index[_name] = _id
-        self._index_to_link_name = {}
-
-        for k, v in self._link_name_to_index.items():
-            self._index_to_link_name[v] = k
-
-    def ik(self, matrix=None, retries=100):
-        self.marionette(FrankaRobot.random_configuration())
-        quat = Quaternion(matrix=matrix)
-        xyzw = [quat.x, quat.y, quat.z, quat.w]
-        position = [matrix[0, 3], matrix[1, 3], matrix[2, 3]]
-        lower_limits = [x[0] for x in FrankaRobot.JOINT_LIMITS] + [0, 0]
-        upper_limits = [x[1] for x in FrankaRobot.JOINT_LIMITS] + [0.04, 0.04]
-        joint_ranges = [x[1] - x[0] for x in FrankaRobot.JOINT_LIMITS] + [0.04, 0.04]
-        rest_poses = [0.00, -1.3, 0.00, -2.87, 0.00, 2.00, 0.75, 0, 0]
-        for i in range(retries + 1):
-            solution = p.calculateInverseKinematics(
-                bodyUniqueId=self.robot_id,
-                endEffectorLinkIndex=11,
-                targetPosition=position,
-                targetOrientation=xyzw,
-                lowerLimits=lower_limits,
-                upperLimits=upper_limits,
-                jointRanges=joint_ranges,
-                restPoses=rest_poses,
-            )
-            arr = np.array(solution)
-            if np.alltrue(arr >= np.array(lower_limits)) and np.alltrue(
-                arr <= np.array(upper_limits)
-            ):
-                self.marionette(solution[:7])
-                return solution[:7]
-            self.marionette(solution[:7])
-
-        return None
-
-    def collision_free_ik(self, matrix=None, retries=2):
-        for i in range(retries + 1):
-            sample = self.ik(matrix, retries=20)
-            if sample is None:
-                continue
-            self.marionette(sample)
-            collides = self.in_collision()
-            if not collides:
-                return sample
-        return None
 
     @property
     def links(self):
@@ -205,9 +147,15 @@ class Bullet:
                 p.removeBody(id, physicsClientId=self.clid)
         self.obstacle_ids = []
 
-    def in_collision(self):
+    def in_collision(self, check_self=False):
         # Step the simulator (only enough for collision detection)
         p.performCollisionDetection(physicsClientId=self.clid)
+        if check_self:
+            contacts = p.getContactPoints(
+                self.robot_id, self.robot_id, physicsClientId=self.clid
+            )
+            if len(contacts) > 0:
+                return True
 
         # Iterate through all obstacles to check for collisions
         for id in self.obstacle_ids:
@@ -216,16 +164,157 @@ class Bullet:
                 return True
         return False
 
+
+class FrankaEnv(Bullet):
+    def load_robot(self, urdf_path="franka_panda/panda.urdf"):
+        if self.robot_id is not None:
+            print("There is already a robot loaded. Removing and reloading")
+            p.removeBody(self.robot_id, physicsClientId=self.clid)
+        self.robot_id = p.loadURDF(
+            urdf_path,
+            useFixedBase=True,
+            physicsClientId=self.clid,
+            flags=p.URDF_USE_SELF_COLLISION,
+        )
+        self.urdf_path = urdf_path
+
+        # Code snippet borrowed from https://pybullet.org/Bullet/phpBB3/viewtopic.php?t=12728
+        self._link_name_to_index = {
+            p.getBodyInfo(self.robot_id, physicsClientId=self.clid)[0].decode(
+                "UTF-8"
+            ): -1
+        }
+        for _id in range(p.getNumJoints(self.robot_id, physicsClientId=self.clid)):
+            _name = p.getJointInfo(self.robot_id, _id, physicsClientId=self.clid)[
+                12
+            ].decode("UTF-8")
+            self._link_name_to_index[_name] = _id
+        self._index_to_link_name = {}
+
+        for k, v in self._link_name_to_index.items():
+            self._index_to_link_name[v] = k
+
+    def ik(self, matrix=None, retries=100):
+        self.marionette(FrankaRobot.random_configuration())
+        quat = Quaternion(matrix=matrix)
+        xyzw = [quat.x, quat.y, quat.z, quat.w]
+        position = [matrix[0, 3], matrix[1, 3], matrix[2, 3]]
+        lower_limits = [x[0] for x in FrankaRobot.JOINT_LIMITS] + [0, 0]
+        upper_limits = [x[1] for x in FrankaRobot.JOINT_LIMITS] + [0.04, 0.04]
+        joint_ranges = [x[1] - x[0] for x in FrankaRobot.JOINT_LIMITS] + [0.04, 0.04]
+        rest_poses = [0.00, -1.3, 0.00, -2.87, 0.00, 2.00, 0.75, 0, 0]
+        for i in range(retries + 1):
+            solution = p.calculateInverseKinematics(
+                bodyUniqueId=self.robot_id,
+                endEffectorLinkIndex=11,
+                targetPosition=position,
+                targetOrientation=xyzw,
+                lowerLimits=lower_limits,
+                upperLimits=upper_limits,
+                jointRanges=joint_ranges,
+                restPoses=rest_poses,
+            )
+            arr = np.array(solution)
+            if np.alltrue(arr >= np.array(lower_limits)) and np.alltrue(
+                arr <= np.array(upper_limits)
+            ):
+                self.marionette(solution[:7])
+                return solution[:7]
+            self.marionette(solution[:7])
+
+        return None
+
+    def collision_free_ik(self, matrix=None, retries=2):
+        for i in range(retries + 1):
+            sample = self.ik(matrix, retries=20)
+            if sample is None:
+                continue
+            self.marionette(sample)
+            collides = self.in_collision(check_self=True)
+            if not collides:
+                return sample
+        return None
+
+    def sample_nearby_ik(self, config, pose, samples=10, failures=10):
+        """
+        Generates a number of collision-free IK solutions and returns the one
+        that is closest in configuration space to the input config. If the
+        collision_free_ik call fails a certain number of times, give up and return None
+        """
+        ik_samples = []
+        num_failures = 0
+        while len(ik_samples) < samples and num_failures < failures:
+            sample = collision_free_ik(matrix=pose)
+            if sample is None:
+                num_failures += 1
+                continue
+            ik_samples.append(np.asarray(sample))
+        if len(ik_samples) == 0:
+            return None
+        config = np.asarray(config)
+        idx = np.argmin(np.array([np.linalg.norm(config - x) for x in samples]))
+        return samples[idx].tolist()
+
     def marionette(self, config):
         # There is something weird in that the URDFs I load start with joint 1, but the
         # urdfs that bullet loads start with 0. This requires further investigation
+
         if self.urdf_path == "franka_panda/panda.urdf":
             for i in range(0, 7):
                 p.resetJointState(
                     self.robot_id, i, config[i], physicsClientId=self.clid
                 )
+            # Spread the fingers if they aren't included--prevents self collision
+            p.resetJointState(self.robot_id, 9, 0.02, physicsClientId=self.clid)
+            p.resetJointState(self.robot_id, 10, 0.02, physicsClientId=self.clid)
         else:
             for i in range(1, 8):
                 p.resetJointState(
                     self.robot_id, i, config[i - 1], physicsClientId=self.clid
                 )
+
+
+class FrankaHandEnv(Bullet):
+    def load_robot(self):
+        urdf_path = Path(__file__).parent.parent / "urdf" / "panda_hand" / "panda.urdf"
+        urdf_path = str(urdf_path)
+        if self.robot_id is not None:
+            print("There is already a robot loaded. Removing and reloading")
+            p.removeBody(self.robot_id, physicsClientId=self.clid)
+        self.robot_id = p.loadURDF(
+            urdf_path,
+            useFixedBase=True,
+            physicsClientId=self.clid,
+            flags=p.URDF_USE_SELF_COLLISION,
+        )
+        self.urdf_path = urdf_path
+
+        # Code snippet borrowed from https://pybullet.org/Bullet/phpBB3/viewtopic.php?t=12728
+        self._link_name_to_index = {
+            p.getBodyInfo(self.robot_id, physicsClientId=self.clid)[0].decode(
+                "UTF-8"
+            ): -1
+        }
+        for _id in range(p.getNumJoints(self.robot_id, physicsClientId=self.clid)):
+            _name = p.getJointInfo(self.robot_id, _id, physicsClientId=self.clid)[
+                12
+            ].decode("UTF-8")
+            self._link_name_to_index[_name] = _id
+        self._index_to_link_name = {}
+
+        for k, v in self._link_name_to_index.items():
+            self._index_to_link_name[v] = k
+
+    def marionette(self, pose):
+        # There is something weird in that the URDFs I load start with joint 1, but the
+        # urdfs that bullet loads start with 0. This requires further investigation
+        x, y, z = pose.xyz
+        p.resetJointState(self.robot_id, 0, x, physicsClientId=self.clid)
+        p.resetJointState(self.robot_id, 1, y, physicsClientId=self.clid)
+        p.resetJointState(self.robot_id, 2, z, physicsClientId=self.clid)
+        p.resetJointStateMultiDof(
+            self.robot_id, 3, pose.xyzw, physicsClientId=self.clid
+        )
+        # Spread the fingers if they aren't included--prevents self collision
+        p.resetJointState(self.robot_id, 4, 0.02, physicsClientId=self.clid)
+        p.resetJointState(self.robot_id, 5, 0.02, physicsClientId=self.clid)

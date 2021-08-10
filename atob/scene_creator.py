@@ -1,5 +1,6 @@
-from atob.planner import Planner, FrankaRobot
-from atob.geometry import Cuboid
+from atob.planner import FrankaPlanner, FrankaHandPlanner, FrankaRobot
+from atob.bullet import FrankaEnv, FrankaHandEnv
+from atob.geometry import Cuboid, SE3
 from atob.scenes.cubby_scene import CubbyEnvironment
 from atob.scenes.single_block_scene import SingleBlockScene
 import numpy as np
@@ -21,6 +22,61 @@ def log(msg):
     print(colored(msg, "blue"))
 
 
+def create_franka_environment(gui):
+    # bullet = Bullet(gui=gui)
+    # bullet.load_robot(**({"urdf_path": urdf_path} if urdf_path is not None else {}))
+    bul = FrankaHandEnv(gui=gui)
+    bul.load_robot()
+    return bul
+
+
+def random_cabinet_eff(planner):
+    environment = CubbyEnvironment(deterministic=True)
+    # Continually try to regenerate environment until a reasonable solution is found
+    while True:
+        if environment.gen():
+            break
+    # Obstacles must be loaded before calling collision free ik
+    obstacles = environment.obstacles
+    planner.create_scene(obstacles)
+
+    assert (
+        environment.cubby_back >= environment.start[0, 3]
+    ), "Start is behind rear of cabinet"
+
+    start = SE3(environment.start)
+    goal = SE3(environment.target)
+    try:
+        path = planner.plan(
+            start=start, goal=goal, interpolate=PATH_LENGTH, max_runtime=2
+        )
+    except Exception as e:
+        raise e
+        print(e)
+        return None, None
+    if path is None:
+        # print("Could not find plan")
+        return None, None
+    if planner.bullet.use_gui:
+        planner.bullet.marionette(start)
+        dist = (
+            environment.start[:3, 3]
+            - planner.bullet.link_frames["panda_grasptarget"][:3, 3]
+        )
+        time.sleep(5)
+        log("MOVING MOVING MOVING")
+        for q in path:
+            planner.bullet.marionette(q)
+            time.sleep(0.01)
+        time.sleep(2)
+
+    # There has to be a reasonable limit on what's feasible for these plans,
+    # so we're limiting plans to be under PATH_LENGTH
+    if len(path) > PATH_LENGTH:
+        return None, None
+    return obstacles, path
+
+
 def random_cabinet(planner):
     environment = CubbyEnvironment(deterministic=True)
     # Continually try to regenerate environment until a reasonable solution is found
@@ -35,19 +91,24 @@ def random_cabinet(planner):
         environment.cubby_back >= environment.start[0, 3]
     ), "Start is behind rear of cabinet"
 
-    start = planner.bullet.collision_free_ik(environment.start, retries=100)
+    start = planner.bullet.collision_free_ik(environment.start, retries=1000)
     if start is None:
-        # print("Could not find start configuration")
+        log("Could not find start configuration")
         return None, None
-    goal = planner.bullet.collision_free_ik(environment.target)
-    if goal is None:
-        # print("Could not find goal configuration")
+    multi_goal = [
+        planner.bullet.collision_free_ik(environment.target, retries=100)
+        for _ in range(20)
+    ]
+    multi_goal = [g for g in multi_goal if g is not None]
+    if len(multi_goal) == 0:
+        log("Could not find goal configurations")
         return None, None
     try:
         path = planner.plan(
-            start=start, goal=goal, interpolate=PATH_LENGTH, max_runtime=2
+            start=start, multi_goal=multi_goal, interpolate=PATH_LENGTH, max_runtime=2
         )
     except Exception as e:
+        raise e
         print(e)
         return None, None
     if path is None:
@@ -59,7 +120,8 @@ def random_cabinet(planner):
             environment.start[:3, 3]
             - planner.bullet.link_frames["panda_grasptarget"][:3, 3]
         )
-        time.sleep(3)
+        time.sleep(5)
+        log("MOVING MOVING MOVING")
         for q in path:
             planner.bullet.marionette(q)
             time.sleep(0.01)
@@ -74,7 +136,8 @@ def random_cabinet(planner):
 
 def process_random_cabinet(seed, file_names):
     np.random.seed(seed)
-    planner = Planner(gui=False)
+    planner = Planner()
+    planner.set_environment(create_franka_environment(gui=False))
     count = 0
     data = []
 
@@ -100,7 +163,9 @@ def process_random_cabinet(seed, file_names):
                     f.flush()
                     time_elapsed = timedelta(seconds=time.time() - start_time)
 
-                    print(f"PID {os.getpid()}: Completed {count}/{PATHS_PER_FILE} in {time_elapsed}")
+                    print(
+                        f"PID {os.getpid()}: Completed {count}/{PATHS_PER_FILE} in {time_elapsed}"
+                    )
             planner.reset()
     return
 
@@ -116,7 +181,7 @@ def simple_block(planner):
     if start is None:
         print("Could not find start configuration")
         return None, None
-    goal = planner.bullet.collision_free_ik(environment.target)
+    goal = planner.bullet.sample_nearby_ik(environment.target)
     if goal is None:
         print("Could not find goal configuration")
         return None, None
@@ -126,15 +191,17 @@ def simple_block(planner):
     planner.bullet.marionette(blocking_config)
     frames = planner.bullet.link_frames
     position = frames["panda_link6"][:3, 3]
-    obstacle = Cuboid.random(
-        dimension_range=[[0.1, 0.1, 0.1], [0.3, 0.3, 0.3]], quaternion=True
-    )
-    obstacle.center = position
-    planner.create_scene([obstacle])
+    obstacles = [
+        Cuboid.random(
+            dimension_range=[[0.1, 0.1, 0.1], [0.3, 0.3, 0.3]], quaternion=True
+        )
+    ]
+    obstacles[0].center = position
+    planner.create_scene(obstacles)
 
     try:
         path = planner.plan(
-            start=start, goal=goal, interpolate=PATH_LENGTH, max_runtime=5
+            start=start, goal=goal, interpolate=PATH_LENGTH, max_runtime=2
         )
     except Exception as e:
         print(e)
@@ -143,13 +210,14 @@ def simple_block(planner):
     if path is None:
         # print("Could not find plan")
         return None, None
+
     if planner.gui:
         planner.bullet.marionette(start)
         dist = (
             environment.start[:3, 3]
             - planner.bullet.link_frames["panda_grasptarget"][:3, 3]
         )
-        time.sleep(3)
+        time.sleep(5)
         for q in path:
             planner.bullet.marionette(q)
             time.sleep(0.01)
@@ -178,7 +246,7 @@ def naive_block(planner):
     planner.create_scene([obstacle])
     try:
         path = planner.plan(
-            start=start, goal=goal, interpolate=PATH_LENGTH, max_runtime=5
+            start=start, goal=goal, interpolate=PATH_LENGTH, max_runtime=2
         )
     except Exception:
         return None, None
@@ -212,7 +280,7 @@ def double_block(planner):
     planner.create_scene([obstacle])
     try:
         path = planner.plan(
-            start=start, goal=goal, interpolate=PATH_LENGTH, max_runtime=5
+            start=start, goal=goal, interpolate=PATH_LENGTH, max_runtime=2
         )
     except Exception:
         return None, None
@@ -231,7 +299,7 @@ def double_block(planner):
     planner.create_scene([obstacle])
     try:
         path = planner.plan(
-            start=start, goal=goal, interpolate=PATH_LENGTH, max_runtime=5
+            start=start, goal=goal, interpolate=PATH_LENGTH, max_runtime=2
         )
     except Exception:
         return None, None
@@ -253,7 +321,8 @@ def double_block(planner):
 
 def process_naive_block(seed, file_names):
     np.random.seed(seed)
-    planner = Planner(gui=False)
+    planner = Planner()
+    planner.set_environment(create_franka_environment(gui=False))
     count = 0
     data = []
 
@@ -281,7 +350,8 @@ def process_naive_block(seed, file_names):
 
 def process_double_block(seed, file_names):
     np.random.seed(seed)
-    planner = Planner(gui=False)
+    planner = Planner()
+    planner.set_environment(create_franka_environment(gui=False))
     count = 0
     data = []
 
@@ -362,11 +432,10 @@ def main():
 
 if __name__ == "__main__":
     noOutputHandler()
-    main()
-    # file_names = Queue()
-    # process_random_cabinet(0, file_names)
-    # planner.reset()
-    # np.random.seed(0)
-    # planner = Planner(gui=False)
-    # random_cabinet(planner)
-    # planner.reset()
+    # main()
+    planner = FrankaHandPlanner()
+    planner.set_environment(create_franka_environment(gui=True))
+
+    # simple_block(planner)
+    random_cabinet_eff(planner)
+    planner.reset()
