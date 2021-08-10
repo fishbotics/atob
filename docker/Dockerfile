@@ -63,7 +63,8 @@ RUN sudo apt update && sudo apt install -y --no-install-recommends \
   python3-numpy \
 # Python 19.10 or greater, otherwise you need special commands
   castxml \
-  pypy3
+  pypy3 \
+  silversearcher-ag
 
 
 # Back to normal
@@ -78,6 +79,7 @@ RUN export CXX=g++
 RUN export MAKEFLAGS="-j `nproc`"
 RUN cmake ../.. -DPYTHON_EXEC=/usr/bin/python3
 RUN make update_bindings
+# Can't build with -j flag or else the build process for the bindings runs out of memory
 RUN make
 RUN sudo make install
 WORKDIR /
@@ -89,7 +91,7 @@ RUN sudo update-alternatives --install /usr/bin/vi vi /usr/bin/nvim 60 \
   && sudo update-alternatives --install /usr/bin/editor editor /usr/bin/nvim 60 \
   && sudo update-alternatives --config editor
 
-RUN python3 -m pip install ipython pybullet pyquaternion
+RUN python3 -m pip install -U numpy ipython pybullet pyquaternion h5py termcolor
 
 RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v1.1.1/zsh-in-docker.sh)"
 RUN echo "alias ll='ls -lhaFtr'" >> ~/.zshrc
