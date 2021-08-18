@@ -64,6 +64,8 @@ class CubbyEnvironment:
 
             self.start_zone = np.random.randint(0, 4)
             self.target_zone = np.random.randint(0, 4)
+            while self.target_zone == self.start_zone:
+                self.target_zone = np.random.randint(0, 4)
             assert self.start_zone < 4
             assert self.target_zone < 4
 
@@ -104,7 +106,7 @@ class CubbyEnvironment:
         if zone == 0:
             transform_matrix[:3, -1] = np.array(
                 [
-                    self.cubby_front,
+                    (self.cubby_front + self.cubby_back) / 2,
                     (self.cubby_left + self.cubby_mid_v_y) / 2,
                     (self.cubby_bottom + self.cubby_mid_h_z) / 2,
                 ]
@@ -112,7 +114,7 @@ class CubbyEnvironment:
         elif zone == 1:
             transform_matrix[:3, -1] = np.array(
                 [
-                    self.cubby_front,
+                    (self.cubby_front + self.cubby_back) / 2,
                     (self.cubby_right + self.cubby_mid_v_y) / 2,
                     (self.cubby_bottom + self.cubby_mid_h_z) / 2,
                 ]
@@ -120,7 +122,7 @@ class CubbyEnvironment:
         elif zone == 2:
             transform_matrix[:3, -1] = np.array(
                 [
-                    self.cubby_front,
+                    (self.cubby_front + self.cubby_back) / 2,
                     (self.cubby_left + self.cubby_mid_v_y) / 2,
                     (self.cubby_top + self.cubby_mid_h_z) / 2,
                 ]
@@ -128,24 +130,24 @@ class CubbyEnvironment:
         else:
             transform_matrix[:3, -1] = np.array(
                 [
-                    self.cubby_front,
+                    (self.cubby_front + self.cubby_back) / 2,
                     (self.cubby_right + self.cubby_mid_v_y) / 2,
                     (self.cubby_top + self.cubby_mid_h_z) / 2,
                 ]
             )
         transform_matrix = np.matmul(self.rotation_matrix, transform_matrix)
         # TODO clean this: transform into the pybullet target frame rather than the old right gripper frame
-        transform_matrix = np.matmul(
-            transform_matrix,
-            np.array(
-                [
-                    [np.cos(np.pi), -np.sin(np.pi), 0, 0],
-                    [np.sin(np.pi), np.cos(np.pi), 0, 0],
-                    [0, 0, 1, 0],
-                    [0, 0, 0, 1],
-                ]
-            ),
-        )
+        # transform_matrix = np.matmul(
+        #     transform_matrix,
+        #     np.array(
+        #         [
+        #             [np.cos(np.pi), -np.sin(np.pi), 0, 0],
+        #             [np.sin(np.pi), np.cos(np.pi), 0, 0],
+        #             [0, 0, 1, 0],
+        #             [0, 0, 0, 1],
+        #         ]
+        #     ),
+        # )
         return transform_matrix
 
     def _random_eff_pose(self, zone):
@@ -207,20 +209,19 @@ class CubbyEnvironment:
                 ]
             )
 
-        #  transform_matrix = np.matmul(self.rotation_matrix,transform_matrix)
-        transform_matrix = np.matmul(transform_matrix, self.rotation_matrix)
+        transform_matrix = np.matmul(self.rotation_matrix, transform_matrix)
         # TODO clean this: transform into the pybullet target frame rather than the old right gripper frame
-        transform_matrix = np.matmul(
-            transform_matrix,
-            np.array(
-                [
-                    [np.cos(np.pi), -np.sin(np.pi), 0, 0],
-                    [np.sin(np.pi), np.cos(np.pi), 0, 0],
-                    [0, 0, 1, 0],
-                    [0, 0, 0, 1],
-                ]
-            ),
-        )
+        # transform_matrix = np.matmul(
+        #     transform_matrix,
+        #     np.array(
+        #         [
+        #             [np.cos(np.pi), -np.sin(np.pi), 0, 0],
+        #             [np.sin(np.pi), np.cos(np.pi), 0, 0],
+        #             [0, 0, 1, 0],
+        #             [0, 0, 0, 1],
+        #         ]
+        #     ),
+        # )
         return transform_matrix
 
     @property

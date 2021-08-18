@@ -23,8 +23,12 @@ def log(msg):
 
 
 def create_franka_environment(gui):
-    # bullet = Bullet(gui=gui)
-    # bullet.load_robot(**({"urdf_path": urdf_path} if urdf_path is not None else {}))
+    bul = FrankaEnv(gui=gui)
+    bul.load_robot()
+    return bul
+
+
+def create_franka_hand_environment(gui):
     bul = FrankaHandEnv(gui=gui)
     bul.load_robot()
     return bul
@@ -433,9 +437,14 @@ def main():
 if __name__ == "__main__":
     noOutputHandler()
     # main()
-    planner = FrankaHandPlanner()
+
+    # planner = FrankaHandPlanner()
+    # planner.set_environment(create_franka_hand_environment(gui=True))
+    # random_cabinet_eff(planner)
+
+    planner = FrankaPlanner()
     planner.set_environment(create_franka_environment(gui=True))
+    random_cabinet(planner)
 
     # simple_block(planner)
-    random_cabinet_eff(planner)
     planner.reset()

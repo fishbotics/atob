@@ -63,10 +63,20 @@ class Planner:
 
 
 class FrankaHandPlanner(Planner):
+    def _not_in_collision(self, q, frame):
+        current_time = time.time()
+        self.bullet.marionette(q, frame)
+        ret = not self.bullet.in_collision(check_self=True)
+        total_time = time.time() - current_time
+        self.total_collision_checking_time += total_time
+        self.collision_check_counts += 1
+        return ret
+
     def plan(
         self,
         start,
         goal,
+        frame="right_gripper",
         max_runtime=1.0,
         interpolate=0,
         verbose=False,
@@ -79,11 +89,11 @@ class FrankaHandPlanner(Planner):
 
         # Verify start state is valid
         # For hand, we don't have a sense for joint ranges, so just check collisions
-        if not self._not_in_collision(start):
+        if not self._not_in_collision(start, frame):
             raise CollisionError(start)
 
         # Verify goal state is valid
-        if not self._not_in_collision(goal):
+        if not self._not_in_collision(goal, frame):
             raise CollisionError(goal)
 
         # Define the state space, which is SE3 because it's just the end effector
@@ -104,7 +114,7 @@ class FrankaHandPlanner(Planner):
         # additional methods that need to be defined, for example to use in an optimizing object
         space_information.setStateValidityChecker(
             ob.StateValidityCheckerFn(
-                lambda q: self._not_in_collision(SE3.from_ompl(q))
+                lambda q: self._not_in_collision(SE3.from_ompl(q), frame)
             )
         )
         space_information.setup()
@@ -125,7 +135,7 @@ class FrankaHandPlanner(Planner):
             mutable_start_rotation.y,
             mutable_start_rotation.z,
             mutable_start_rotation.w,
-        ) = start.xyzw
+        ) = start.so3.xyzw
         pdef.addStartState(start_state)
 
         goal_state = ob.GoalState(space_information)
@@ -141,7 +151,7 @@ class FrankaHandPlanner(Planner):
             mutable_goal_rotation.y,
             mutable_goal_rotation.z,
             mutable_goal_rotation.w,
-        ) = goal.xyzw
+        ) = goal.so3.xyzw
         goal_state.setState(gstate)
         pdef.setGoal(goal_state)
 

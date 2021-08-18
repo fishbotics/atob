@@ -2,19 +2,13 @@ from pyquaternion import Quaternion
 import numpy as np
 
 
-class SE3:
-    def __init__(self, matrix=None, xyz=None, quat=None):
-        assert bool(matrix is None) != bool(xyz is None and quat is None)
-        if matrix is not None:
-            self._xyz = matrix[:3, 3]
-            self._quat = Quaternion(matrix=matrix)
-        else:
-            self._xyz = xyz
-            self._quat = Quaternion(quat)
+class SO3:
+    def __init__(self, quat):
+        self._quat = quat
 
     @property
-    def xyz(self):
-        return self._xyz.tolist()
+    def transformation_matrix(self):
+        return self._quat.transformation_matrix
 
     @property
     def xyzw(self):
@@ -24,11 +18,43 @@ class SE3:
     def wxyz(self):
         return [self._quat.scalar] + self._quat.vector.tolist()
 
+
+class SE3:
+    def __init__(self, matrix=None, xyz=None, quat=None):
+        assert bool(matrix is None) != bool(xyz is None and quat is None)
+        if matrix is not None:
+            self._xyz = matrix[:3, 3]
+            self._so3 = SO3(Quaternion(matrix=matrix))
+        else:
+            assert isinstance(quat, Quaternion)
+            self._xyz = np.asarray(xyz)
+            self._so3 = SO3(quat)
+
+    def __matmul__(self, other):
+        return SE3(matrix=self.matrix @ other.matrix)
+
+    def inv(self):
+        return SE3(matrix=np.linalg.inv(self.matrix))
+
+    @property
+    def matrix(self):
+        m = self._so3.transformation_matrix
+        m[:3, 3] = self.xyz
+        return m
+
+    @property
+    def so3(self):
+        return self._so3
+
+    @property
+    def xyz(self):
+        return self._xyz.tolist()
+
     @classmethod
     def from_ompl(cls, pose):
         rot = pose.rotation()
         xyz = np.array([pose.getX(), pose.getY(), pose.getZ()])
-        return cls(xyz=xyz, quat=[rot.w, rot.x, rot.y, rot.z])
+        return cls(xyz=xyz, quat=Quaternion([rot.w, rot.x, rot.y, rot.z]))
 
 
 class Cuboid:
@@ -87,6 +113,10 @@ class Cuboid:
     @property
     def wxyz(self):
         return [self._quaternion.scalar] + self._quaternion.vector.tolist()
+
+    @property
+    def pose(self):
+        return SE3(xyz=self._center, quat=self._quaternion)
 
     @property
     def center(self):

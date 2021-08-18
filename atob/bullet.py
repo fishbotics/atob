@@ -5,6 +5,7 @@ import numpy as np
 from pyquaternion import Quaternion
 import time
 from atob.franka import FrankaRobot
+from atob.geometry import SE3
 from pathlib import Path
 
 
@@ -305,16 +306,138 @@ class FrankaHandEnv(Bullet):
         for k, v in self._link_name_to_index.items():
             self._index_to_link_name[v] = k
 
-    def marionette(self, pose):
-        # There is something weird in that the URDFs I load start with joint 1, but the
-        # urdfs that bullet loads start with 0. This requires further investigation
+    def marionette(self, pose, frame):
+        assert frame in ["base_frame", "right_gripper", "panda_grasptarget"]
+        # Pose is expressed as a transformation from the desired frame to the world
+        # But we need to transform it into the base frame
+
+        # TODO maybe there is some way to cache these transforms from the urdf
+        # instead of hardcoding them
+        if frame == "right_gripper":
+            transform = SE3(
+                matrix=np.array(
+                    [
+                        [-0.7071067811865475, 0.7071067811865475, 0, 0],
+                        [-0.7071067811865475, -0.7071067811865475, 0, 0],
+                        [0, 0, 1, -0.1],
+                        [0, 0, 0, 1],
+                    ]
+                )
+            )
+            pose = pose @ transform
+        elif frame == "panda_grasptarget":
+            transform = SE3(
+                matrix=np.array(
+                    [
+                        [0.7071067811865475, 0.7071067811865475, 0, 0],
+                        [0.7071067811865475, 0.7071067811865475, 0, 0],
+                        [0, 0, 1, -0.105],
+                        [0, 0, 0, 1],
+                    ]
+                )
+            )
+            pose = pose @ transform
+
         x, y, z = pose.xyz
         p.resetJointState(self.robot_id, 0, x, physicsClientId=self.clid)
         p.resetJointState(self.robot_id, 1, y, physicsClientId=self.clid)
         p.resetJointState(self.robot_id, 2, z, physicsClientId=self.clid)
         p.resetJointStateMultiDof(
-            self.robot_id, 3, pose.xyzw, physicsClientId=self.clid
+            self.robot_id, 3, pose.so3.xyzw, physicsClientId=self.clid
         )
         # Spread the fingers if they aren't included--prevents self collision
         p.resetJointState(self.robot_id, 4, 0.02, physicsClientId=self.clid)
         p.resetJointState(self.robot_id, 5, 0.02, physicsClientId=self.clid)
+
+
+class FrankaHandAndArm(Bullet):
+    def __init__(self, gui=False):
+        self.use_gui = gui
+        if self.use_gui:
+            self.clid = p.connect(p.GUI)
+        else:
+            self.clid = p.connect(p.DIRECT)
+        self.robot_arm_id = None
+        self.robot_hand_id = None
+        self.obstacle_ids = []
+        self.obstacle_collision_ids = []
+        self._link_name_to_index = None
+        p.setAdditionalSearchPath(pybullet_data.getDataPath())
+
+    def load_robot_arm(self, urdf_path="franka_panda/panda.urdf"):
+        if self.robot_arm_id is not None:
+            print("There is already a robot loaded. Removing and reloading")
+            p.removeBody(self.robot_arm_id, physicsClientId=self.clid)
+        self.robot_arm_id = p.loadURDF(
+            urdf_path,
+            useFixedBase=True,
+            physicsClientId=self.clid,
+            flags=p.URDF_USE_SELF_COLLISION,
+        )
+
+    def marionette_arm(self, config):
+        # There is something weird in that the URDFs I load start with joint 1, but the
+        # urdfs that bullet loads start with 0. This requires further investigation
+        for i in range(0, 7):
+            p.resetJointState(
+                self.robot_arm_id, i, config[i], physicsClientId=self.clid
+            )
+        # Spread the fingers if they aren't included--prevents self collision
+        p.resetJointState(self.robot_arm_id, 9, 0.02, physicsClientId=self.clid)
+        p.resetJointState(self.robot_arm_id, 10, 0.02, physicsClientId=self.clid)
+
+    def load_robot_hand(self):
+        urdf_path = Path(__file__).parent.parent / "urdf" / "panda_hand" / "panda.urdf"
+        urdf_path = str(urdf_path)
+        if self.robot_hand_id is not None:
+            print("There is already a robot loaded. Removing and reloading")
+            p.removeBody(self.robot_hand_id, physicsClientId=self.clid)
+        self.robot_hand_id = p.loadURDF(
+            urdf_path,
+            useFixedBase=True,
+            physicsClientId=self.clid,
+            flags=p.URDF_USE_SELF_COLLISION,
+        )
+
+    def marionette_hand(self, pose, frame):
+        assert frame in ["base_frame", "right_gripper", "panda_grasptarget"]
+        # Pose is expressed as a transformation from the desired frame to the world
+        # But we need to transform it into the base frame
+
+        # TODO maybe there is some way to cache these transforms from the urdf
+        # instead of hardcoding them
+        if frame == "right_gripper":
+            transform = SE3(
+                matrix=np.array(
+                    [
+                        [-0.7071067811865475, 0.7071067811865475, 0, 0],
+                        [-0.7071067811865475, -0.7071067811865475, 0, 0],
+                        [0, 0, 1, -0.1],
+                        [0, 0, 0, 1],
+                    ]
+                )
+            )
+            pose = pose @ transform
+        elif frame == "panda_grasptarget":
+            transform = SE3(
+                matrix=np.array(
+                    [
+                        [0.7071067811865475, 0.7071067811865475, 0, 0],
+                        [0.7071067811865475, 0.7071067811865475, 0, 0],
+                        [0, 0, 1, -0.105],
+                        [0, 0, 0, 1],
+                    ]
+                )
+            )
+            pose = pose @ transform
+
+        x, y, z = pose.xyz
+        p.resetJointState(self.robot_hand_id, 0, x, physicsClientId=self.clid)
+        p.resetJointState(self.robot_hand_id, 1, y, physicsClientId=self.clid)
+        p.resetJointState(self.robot_hand_id, 2, z, physicsClientId=self.clid)
+        p.resetJointStateMultiDof(
+            self.robot_hand_id, 3, pose.so3.xyzw, physicsClientId=self.clid
+        )
+        # Spread the fingers if they aren't included--prevents self collision
+        p.resetJointState(self.robot_hand_id, 4, 0.02, physicsClientId=self.clid)
+        p.resetJointState(self.robot_hand_id, 5, 0.02, physicsClientId=self.clid)
