@@ -73,7 +73,6 @@ class CubbyEnvironment:
                 try:
                     self._start = self._random_eff_pose((self.start_zone + i) % 4)
                 except Exception as e:
-                    print(e)
                     if i < 3:
                         continue
                     else:
@@ -90,7 +89,6 @@ class CubbyEnvironment:
                     if i < 3:
                         continue
                     else:
-                        print("No valid zone for target")
                         return False
                 else:
                     self.target_zone = (self.target_zone + i) % 4

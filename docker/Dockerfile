@@ -55,7 +55,6 @@ RUN sudo apt update && sudo apt install -y --no-install-recommends \
   libboost-test-dev \
   libeigen3-dev \
   libode-dev \
-  libyaml-cpp-dev \
   python3-dev \
   python3-pip \
   libboost-python-dev \
@@ -64,11 +63,23 @@ RUN sudo apt update && sudo apt install -y --no-install-recommends \
 # Python 19.10 or greater, otherwise you need special commands
   castxml \
   pypy3 \
-  silversearcher-ag
+  silversearcher-ag \
+  libpng16-16 \
+  git
 
 
 # Back to normal
 RUN sudo apt-get clean && sudo rm -rf /var/lib/apt
+
+RUN git clone https://github.com/jbeder/yaml-cpp \
+  && cd yaml-cpp \
+  && git checkout yaml-cpp-0.6.3 \
+  && mkdir build \
+  && cd build \
+  && cmake -DYAML_BUILD_SHARED_LIBS=ON -DYAML_CPP_BUILD_TESTS=OFF -DYAML_CPP_BUILD_TOOLS=OFF .. \
+  && make -j \
+  && sudo make install
+
 
 RUN python3 -m pip install -vU https://github.com/CastXML/pygccxml/archive/develop.zip pyplusplus
 

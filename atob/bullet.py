@@ -32,6 +32,9 @@ class Bullet:
     def is_robot_loaded(self):
         return self.robot_id is not None
 
+    def are_obstacles_loaded(self):
+        return len(self.obstacle_ids) > 0
+
     def marionette(self, config):
         raise NotImplementedError("Marionette not implemented")
 
@@ -350,7 +353,7 @@ class FrankaHandEnv(Bullet):
         p.resetJointState(self.robot_id, 5, 0.02, physicsClientId=self.clid)
 
 
-class FrankaHandAndArm(Bullet):
+class FrankaHandArmEnv(Bullet):
     def __init__(self, gui=False):
         self.use_gui = gui
         if self.use_gui:
