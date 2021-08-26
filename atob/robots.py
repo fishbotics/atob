@@ -1,5 +1,5 @@
 import numpy as np
-
+from pathlib import Path
 
 class FrankaRobot:
     # TODO remove this after making this more general
@@ -13,8 +13,20 @@ class FrankaRobot:
         (-2.8973, 2.8973),
     ]
     DOF = 7
+    urdf = str(Path(__file__).parent.parent / "urdf" / "franka_panda" / "panda.urdf")
 
     @staticmethod
     def random_configuration():
         limits = np.array(FrankaRobot.JOINT_LIMITS)
         return (limits[:, 1] - limits[:, 0]) * (np.random.rand(7)) + limits[:, 0]
+
+
+class FrankaHand:
+    JOINT_LIMITS = None
+    DOF = 6
+    urdf = str(Path(__file__).parent.parent / "urdf" / "panda_hand" / "panda.urdf")
+
+    @staticmethod
+    def random_configuration():
+        raise NotImplementedError("Random configuration not implemented for Franka Hand"
+
