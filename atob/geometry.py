@@ -13,6 +13,43 @@ class SO3:
         """
         self._quat = quat
 
+    @classmethod
+    def from_rpy(cls, rpy):
+        """
+        Convert roll-pitch-yaw coordinates to a 3x3 homogenous rotation matrix.
+
+        The roll-pitch-yaw axes in a typical URDF are defined as a
+        rotation of ``r`` radians around the x-axis followed by a rotation of
+        ``p`` radians around the y-axis followed by a rotation of ``y`` radians
+        around the z-axis. These are the Z1-Y2-X3 Tait-Bryan angles. See
+        Wikipedia_ for more information.
+
+        .. _Wikipedia: https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
+
+        :param rpy: The roll-pitch-yaw coordinates in order (x-rot, y-rot, z-rot).
+        :return: An SO3 object
+        """
+        coords = np.asanyarray(rpy, dtype=np.float64)
+        c3, c2, c1 = np.cos(rpy)
+        s3, s2, s1 = np.sin(rpy)
+
+        matrix = np.array(
+            [
+                [c1 * c2, (c1 * s2 * s3) - (c3 * s1), (s1 * s3) + (c1 * c3 * s2)],
+                [c2 * s1, (c1 * c3) + (s1 * s2 * s3), (c3 * s1 * s2) - (c1 * s3)],
+                [-s2, c2 * s3, c2 * c3],
+            ],
+            dtype=np.float64,
+        )
+        return SO3(Quaternion(matrix=matrix))
+
+    @property
+    def inverse(self):
+        """
+        :return: The inverse of the orientation
+        """
+        return SO3(self._quat.inverse)
+
     @property
     def transformation_matrix(self):
         return self._quat.transformation_matrix
@@ -31,21 +68,35 @@ class SO3:
         """
         return [self._quat.scalar] + self._quat.vector.tolist()
 
+    @property
+    def matrix(self):
+        """
+        :return: The matrix representation of the orientation
+        """
+        return self._quat.rotation_matrix
+
 
 class SE3:
     """
     A generic class defining a 3D pose with some helper functions for easy conversions
     """
 
-    def __init__(self, matrix=None, xyz=None, quat=None):
-        assert bool(matrix is None) != bool(xyz is None and quat is None)
+    def __init__(self, matrix=None, xyz=None, quat=None, so3=None, rpy=None):
+        assert bool(matrix is None) != bool(
+            xyz is None and (bool(quat is None) ^ bool(so3 is None) ^ bool(rpy is None))
+        )
         if matrix is not None:
             self._xyz = matrix[:3, 3]
             self._so3 = SO3(Quaternion(matrix=matrix))
         else:
-            assert isinstance(quat, Quaternion)
             self._xyz = np.asarray(xyz)
-            self._so3 = SO3(quat)
+            if quat is not None:
+                assert isinstance(quat, Quaternion)
+                self._so3 = SO3(quat)
+            elif rpy is not None:
+                self._so3 = SO3.from_rpy(rpy)
+            else:
+                self._so3 = so3
 
     def __matmul__(self, other):
         """
@@ -53,11 +104,12 @@ class SE3:
         """
         return SE3(matrix=self.matrix @ other.matrix)
 
-    def inv(self):
+    @property
+    def inverse(self):
         """
         :return: The inverse transformation
         """
-        return SE3(matrix=np.linalg.inv(self.matrix))
+        return SE3(xyz=-self._xyz, so3=self._so3.inverse)
 
     @property
     def matrix(self):
