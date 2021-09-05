@@ -2,7 +2,7 @@ from ompl import base as ob
 from ompl import geometric as og
 
 from atob.bullet import Bullet
-from atob.franka import FrankaRobot
+from atob.robots import FrankaRobot
 from atob.errors import ConfigurationError, CollisionError
 from atob.geometry import SE3
 import time
@@ -32,6 +32,7 @@ class Planner:
     def reset(self):
         self.bullet.clear_all_obstacles()
         self._scene_created = False
+        self.collision_check_counts = 0
 
     def set_environment(self, env):
         self.bullet = env
@@ -162,7 +163,7 @@ class FrankaHandPlanner(Planner):
 
         # Set up the actual planner and give it the problem
         optimizing_planner = og.ABITstar(space_information)
-        optimizing_planner.setUseKNearest(False)
+        optimizing_planner.setUseKNearest(True)
 
         optimizing_planner.setProblemDefinition(pdef)
         optimizing_planner.setup()

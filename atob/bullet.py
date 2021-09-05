@@ -230,7 +230,7 @@ class Bullet:
         # TODO should this be moved into the robot's class itself?
         raise NotImplementedError("ik must be implemented for each robot type")
 
-    def _setup_robot():
+    def _setup_robot(self):
         """
         Internal function for setting up the correspondence between link names and ids.
             This is called internally when loading a robot
@@ -253,7 +253,7 @@ class Bullet:
 
 
 class FrankaEnv(Bullet):
-    def load_robot():
+    def load_robot(self):
         if self.robot_id is not None:
             print("There is already a robot loaded. Removing and reloading")
             p.removeBody(self.robot_id, physicsClientId=self.clid)
@@ -263,8 +263,8 @@ class FrankaEnv(Bullet):
             physicsClientId=self.clid,
             flags=p.URDF_USE_SELF_COLLISION,
         )
-        self.urdf_path = FrankaRobot.urdf_path
-        self.setup_robot()
+        self.urdf_path = FrankaRobot.urdf
+        self._setup_robot()
 
     def ik(self, pose, retries=100, frame="panda_grasptarget"):
         """
@@ -278,8 +278,6 @@ class FrankaEnv(Bullet):
         # TODO should this function go inside the robot class instead?
         self.marionette(FrankaRobot.random_configuration())
         link_id = self.link_id(frame)
-        xyzw = pose.so3.xyzw
-        position = pose.xyz()
         lower_limits = [x[0] for x in FrankaRobot.JOINT_LIMITS] + [0, 0]
         upper_limits = [x[1] for x in FrankaRobot.JOINT_LIMITS] + [0.04, 0.04]
         joint_ranges = [x[1] - x[0] for x in FrankaRobot.JOINT_LIMITS] + [0.04, 0.04]
@@ -288,12 +286,12 @@ class FrankaEnv(Bullet):
             solution = p.calculateInverseKinematics(
                 bodyUniqueId=self.robot_id,
                 endEffectorLinkIndex=link_id,
-                targetPosition=position,
-                targetOrientation=xyzw,
-                lowerLimits=lower_limits,
-                upperLimits=upper_limits,
-                jointRanges=joint_ranges,
-                restPoses=rest_poses,
+                targetPosition=pose.xyz,
+                targetOrientation=pose.so3.xyzw,
+                # lowerLimits=lower_limits,
+                # upperLimits=upper_limits,
+                # jointRanges=joint_ranges,
+                # restPoses=rest_poses,
             )
             arr = np.array(solution)
             if np.alltrue(arr >= np.array(lower_limits)) and np.alltrue(

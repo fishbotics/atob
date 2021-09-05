@@ -171,7 +171,7 @@ class Trajectory:
         total_distance = spline_times[-1]
         if total_distance == 0:
             print("There is no movement in the path")
-            return spline
+            return None
 
         if dt is not None:
             N = int(math.ceil(total_distance / dt))
