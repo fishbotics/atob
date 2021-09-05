@@ -33,8 +33,8 @@ class CubbyEnvironment:
         self.cubby_mid_v_y = 0.0
         self.thickness = 0.02
         self.rotation_matrix = np.eye(4)
-        self.rotation = 0
-        self.rotation = np.pi / 18
+        self.in_cabinet_rotation = np.pi / 18
+        self.world_rotation = np.pi / 8
         self.rotation_matrix = self._rotation_matrix()
 
         if self.deterministic:
@@ -59,7 +59,8 @@ class CubbyEnvironment:
                 self.cubby_mid_h_z = unif(self.cubby_mid_h_z, 0.1)
                 self.cubby_mid_v_y = unif(self.cubby_mid_v_y, 0.1)
                 self.thickness = unif(self.thickness, 0.01)
-                self.rotation = unif(0, np.pi / 18)
+                self.in_cabinet_rotation = unif(0, np.pi / 18)
+                self.world_rotation = unif(0, np.pi / 2)
                 self.rotation_matrix = self._rotation_matrix()
 
             self.start_zone = np.random.randint(0, 4)
@@ -244,10 +245,20 @@ class CubbyEnvironment:
                 [0, 0, 0, 1],
             ]
         )
-        rotation = np.array(
+        in_cabinet_rotation = np.array(
             [
-                [np.cos(self.rotation), -np.sin(self.rotation), 0, 0],
-                [np.sin(self.rotation), np.cos(self.rotation), 0, 0],
+                [
+                    np.cos(self.in_cabinet_rotation),
+                    -np.sin(self.in_cabinet_rotation),
+                    0,
+                    0,
+                ],
+                [
+                    np.sin(self.in_cabinet_rotation),
+                    np.cos(self.in_cabinet_rotation),
+                    0,
+                    0,
+                ],
                 [0, 0, 1, 0],
                 [0, 0, 0, 1],
             ]
@@ -260,7 +271,31 @@ class CubbyEnvironment:
                 [0, 0, 0, 1],
             ]
         )
-        return np.matmul(world_T_cabinet, np.matmul(rotation, cabinet_T_world))
+        pivot = np.matmul(
+            world_T_cabinet, np.matmul(in_cabinet_rotation, cabinet_T_world)
+        )
+        return np.matmul(
+            np.array(
+                [
+                    [
+                        np.cos(self.world_rotation),
+                        -np.sin(self.world_rotation),
+                        0,
+                        0,
+                    ],
+                    [
+                        np.sin(self.world_rotation),
+                        np.cos(self.world_rotation),
+                        0,
+                        0,
+                    ],
+                    [0, 0, 1, 0],
+                    [0, 0, 0, 1],
+                ]
+            ),
+            pivot,
+        )
+        return
 
     def _unrotated_obstacles(self):
         return {
