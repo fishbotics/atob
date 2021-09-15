@@ -30,6 +30,12 @@ class FrankaRobot:
     urdf = str(Path(__file__).parent.parent / "urdf" / "franka_panda" / "panda.urdf")
 
     @staticmethod
+    def within_limits(config):
+        return np.all(config >= FrankaRobot.JOINT_LIMITS[:, 0]) and np.all(
+            config <= FrankaRobot.JOINT_LIMITS[:, 1]
+        )
+
+    @staticmethod
     def fk(config, eff_frame="panda_link8"):
         """
         Returns the SE3 frame of the end effector
