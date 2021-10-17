@@ -118,6 +118,9 @@ class Bullet:
         ids = []
         for cuboid in cuboids:
             assert isinstance(cuboid, Cuboid)
+            if cuboid.is_zero_volume():
+                continue
+
             kwargs = {}
             if self.use_gui:
                 obstacle_visual_id = p.createVisualShape(

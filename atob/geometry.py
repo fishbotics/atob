@@ -146,6 +146,27 @@ class SE3:
         xyz = np.array([pose.getX(), pose.getY(), pose.getZ()])
         return cls(xyz=xyz, quat=Quaternion([rot.w, rot.x, rot.y, rot.z]))
 
+    @classmethod
+    def from_unit_axes(cls, origin, x, y, z):
+        """
+        Constructs SE3 object from unit axes indicating direction and an origin
+
+        :param: OMPL SE3StateSpace object
+        :return: SE3 object
+        """
+        assert np.isclose(np.dot(x, y), 0)
+        assert np.isclose(np.dot(x, z), 0)
+        assert np.isclose(np.dot(y, z), 0)
+        assert np.isclose(np.linalg.norm(x), 1)
+        assert np.isclose(np.linalg.norm(y), 1)
+        assert np.isclose(np.linalg.norm(z), 1)
+        m = np.eye(4)
+        m[:3, 0] = x
+        m[:3, 1] = y
+        m[:3, 2] = z
+        m[:3, 2] = origin
+        return cls(matrix=m)
+
 
 class Cuboid:
     def __init__(self, center, dims, quaternion):
@@ -205,6 +226,9 @@ class Cuboid:
             quaternion = Quaternion([1, 0, 0, 0])
 
         return cls(center, dims, quaternion)
+
+    def is_zero_volume(self):
+        return np.isclose(self._dims, 0).any()
 
     @property
     def xyzw(self):

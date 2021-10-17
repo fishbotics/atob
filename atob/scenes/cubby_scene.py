@@ -1,4 +1,5 @@
 import numpy as np
+from copy import deepcopy
 from pyquaternion import Quaternion
 from atob.geometry import Cuboid
 
@@ -19,6 +20,19 @@ class CubbyEnvironment:
         self.fix_env = fix_env
         self.fix_start = fix_start
 
+    def is_blocked(self):
+        return self.start_zone != self.target_zone
+
+    def create_unblocked_environment(self):
+        assert self.is_blocked()
+        env = deepcopy(self)
+        if env.start_zone in [0, 1] and env.target_zone in [2, 3]:
+            # Remove horizontal divider
+            env.middle_shelf_thickness = 0
+        if env.start_zone in [0, 2] and env.target_zone in [1, 3]:
+            env.center_wall_thickness = 0
+        return env
+
     def gen(self):
 
         # Default the default environment config
@@ -32,6 +46,8 @@ class CubbyEnvironment:
         self.cubby_mid_h_z = 0.45
         self.cubby_mid_v_y = 0.0
         self.thickness = 0.02
+        self.middle_shelf_thickness = 0.02
+        self.center_wall_thickness = 0.02
         self.rotation_matrix = np.eye(4)
         self.in_cabinet_rotation = np.pi / 18
         self.world_rotation = np.pi / 8
@@ -344,7 +360,7 @@ class CubbyEnvironment:
                 "dims": [
                     self.cubby_back - self.cubby_front,
                     self.cubby_left - self.cubby_right,
-                    self.thickness,
+                    self.middle_shelf_thickness,
                 ],
             },
             "right_wall": {
@@ -381,7 +397,7 @@ class CubbyEnvironment:
                 ],
                 "dims": [
                     self.cubby_back - self.cubby_front,
-                    self.thickness,
+                    self.center_wall_thickness,
                     self.cubby_top - self.cubby_bottom + self.thickness,
                 ],
             },
