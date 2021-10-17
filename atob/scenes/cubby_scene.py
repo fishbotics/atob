@@ -33,7 +33,7 @@ class CubbyEnvironment:
             env.center_wall_thickness = 0
         return env
 
-    def gen(self):
+    def gen(self, use_world_rotation=False):
 
         # Default the default environment config
         # These defaults are used for the deterministic case
@@ -110,6 +110,8 @@ class CubbyEnvironment:
                 else:
                     self.target_zone = (self.target_zone + i) % 4
                     break
+        if not use_world_rotation:
+            self.world_rotation = 0
         return True
 
     def _deterministic_eff_pose(self, zone):
