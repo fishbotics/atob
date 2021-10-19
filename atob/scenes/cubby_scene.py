@@ -26,10 +26,14 @@ class CubbyEnvironment:
     def create_unblocked_environment(self):
         assert self.is_blocked()
         env = deepcopy(self)
-        if env.start_zone in [0, 1] and env.target_zone in [2, 3]:
+        if (env.start_zone in [0, 1] and env.target_zone in [2, 3]) or (
+            env.start_zone in [2, 3] and env.target_zone in [0, 1]
+        ):
             # Remove horizontal divider
             env.middle_shelf_thickness = 0
-        if env.start_zone in [0, 2] and env.target_zone in [1, 3]:
+        if (env.start_zone in [0, 2] and env.target_zone in [1, 3]) or (
+            env.start_zone in [1, 3] and env.target_zone in [0, 2]
+        ):
             env.center_wall_thickness = 0
         return env
 
@@ -50,7 +54,10 @@ class CubbyEnvironment:
         self.center_wall_thickness = 0.02
         self.rotation_matrix = np.eye(4)
         self.in_cabinet_rotation = np.pi / 18
-        self.world_rotation = np.pi / 8
+        if use_world_rotation:
+            self.world_rotation = np.pi / 8
+        else:
+            self.world_rotation = 0
         self.rotation_matrix = self._rotation_matrix()
 
         if self.deterministic:
@@ -76,7 +83,10 @@ class CubbyEnvironment:
                 self.cubby_mid_v_y = unif(self.cubby_mid_v_y, 0.1)
                 self.thickness = unif(self.thickness, 0.01)
                 self.in_cabinet_rotation = unif(0, np.pi / 18)
-                self.world_rotation = unif(0, np.pi / 2)
+                if use_world_rotation:
+                    self.world_rotation = unif(0, np.pi / 2)
+                else:
+                    self.world_rotation = 0
                 self.rotation_matrix = self._rotation_matrix()
 
             self.start_zone = np.random.randint(0, 4)
@@ -110,8 +120,6 @@ class CubbyEnvironment:
                 else:
                     self.target_zone = (self.target_zone + i) % 4
                     break
-        if not use_world_rotation:
-            self.world_rotation = 0
         return True
 
     def _deterministic_eff_pose(self, zone):

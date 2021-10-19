@@ -32,6 +32,18 @@ class Bullet:
         """
         p.disconnect(self.clid)
 
+    def setCameraPosition(self, yaw, pitch, distance, target):
+        p.resetDebugVisualizerCamera(
+            distance, yaw, pitch, target, physicsClientId=self.clid
+        )
+
+    def printCameraPosition(self):
+        params = p.getDebugVisualizerCamera(physicsClientId=self.clid)
+        print(f"Yaw: {params[8]}")
+        print(f"Pitch: {params[9]}")
+        print(f"Distance: {params[10]}")
+        print(f"Target: {params[11]}")
+
     def load_robot(self):
         """
         Generic function to load a robot.
