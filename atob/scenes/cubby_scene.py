@@ -89,37 +89,30 @@ class CubbyEnvironment:
                     self.world_rotation = 0
                 self.rotation_matrix = self._rotation_matrix()
 
-            self.start_zone = np.random.randint(0, 4)
-            self.target_zone = np.random.randint(0, 4)
-            while self.target_zone == self.start_zone:
-                self.target_zone = np.random.randint(0, 4)
-            assert self.start_zone < 4
-            assert self.target_zone < 4
-
-            for i in range(4):
+            initial_start = np.random.randint(0, 4)
+            starts = [x % 4 for x in list(range(initial_start, initial_start + 4))]
+            self._start = None
+            for s in starts:
                 try:
-                    self._start = self._random_eff_pose((self.start_zone + i) % 4)
+                    self._start = self._random_eff_pose(s)
+                    self.start_zone = s
                 except Exception as e:
-                    if i < 3:
-                        continue
-                    else:
-                        print("No valid zone for start")
-                        return False
-                else:
-                    self.start_zone = (self.start_zone + i) % 4
-                    break
-
-            for i in range(4):
+                    continue
+            if self._start is None:
+                print("No valid zone for start")
+                return False
+            targets = [x for x in list(range(4)) if x != self.start_zone]
+            np.random.shuffle(targets)
+            self._target = None
+            for t in targets:
                 try:
-                    self._target = self._random_eff_pose((self.target_zone + i) % 4)
-                except:
-                    if i < 3:
-                        continue
-                    else:
-                        return False
-                else:
-                    self.target_zone = (self.target_zone + i) % 4
-                    break
+                    self._target = self._random_eff_pose(t)
+                    self.target_zone = t
+                except Exception as e:
+                    continue
+            if self._target is None:
+                print("No valid zone for target")
+                return False
         return True
 
     def _deterministic_eff_pose(self, zone):
