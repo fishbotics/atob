@@ -96,6 +96,7 @@ class CubbyEnvironment:
                 try:
                     self._start = self._random_eff_pose(s)
                     self.start_zone = s
+                    break
                 except Exception as e:
                     continue
             if self._start is None:
@@ -108,6 +109,7 @@ class CubbyEnvironment:
                 try:
                     self._target = self._random_eff_pose(t)
                     self.target_zone = t
+                    break
                 except Exception as e:
                     continue
             if self._target is None:
