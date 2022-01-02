@@ -123,3 +123,17 @@ class FrankaHand:
         raise NotImplementedError(
             "Random configuration not implemented for Franka Hand"
         )
+
+
+class FrankaBlackHand:
+    JOINT_LIMITS = None
+    DOF = 6
+    urdf = str(
+        Path(__file__).parent.parent / "urdf" / "panda_hand" / "panda_black.urdf"
+    )
+
+    @staticmethod
+    def random_configuration():
+        raise NotImplementedError(
+            "Random configuration not implemented for Franka Hand"
+        )
