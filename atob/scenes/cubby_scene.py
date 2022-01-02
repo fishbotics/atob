@@ -1,7 +1,7 @@
 import numpy as np
 from copy import deepcopy
 from pyquaternion import Quaternion
-from atob.geometry import Cuboid
+from geometrout.primitive import Cuboid
 
 
 def unif_sample(a, b):
@@ -116,6 +116,23 @@ class CubbyEnvironment:
                 print("No valid zone for target")
                 return False
         return True
+
+    def check_zone(self, pose_matrix):
+        transform_matrix = np.linalg.inv(self.rotation_matrix) @ pose_matrix
+        xyz = transform_matrix[:3, -1]
+        x, y, z = xyz
+        if not (self.cubby_front < x and x < self.cubby_back):
+            return -1
+        if self.cubby_bottom < z and z < self.cubby_mid_h_z:
+            if self.cubby_mid_v_y < y and y < self.cubby_left:
+                return 0
+            else:
+                return 1
+        else:
+            if self.cubby_mid_v_y < y and y < self.cubby_left:
+                return 2
+            else:
+                return 3
 
     def _deterministic_eff_pose(self, zone):
         assert self.deterministic
