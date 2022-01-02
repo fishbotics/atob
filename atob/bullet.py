@@ -1,10 +1,10 @@
 import pybullet as p
 import pybullet_data
-from atob.geometry import Cuboid, Sphere
+from geometrout.primitive import Cuboid, Sphere
 import numpy as np
 from pyquaternion import Quaternion
 import time
-from atob.robots import FrankaRobot, FrankaHand
+from atob.robots import FrankaRobot, FrankaHand, FrankaBlackHand
 from atob.geometry import SE3
 from pathlib import Path
 
@@ -37,12 +37,14 @@ class Bullet:
             distance, yaw, pitch, target, physicsClientId=self.clid
         )
 
-    def printCameraPosition(self):
+    def getCameraPosition(self):
         params = p.getDebugVisualizerCamera(physicsClientId=self.clid)
-        print(f"Yaw: {params[8]}")
-        print(f"Pitch: {params[9]}")
-        print(f"Distance: {params[10]}")
-        print(f"Target: {params[11]}")
+        return {
+            "yaw": params[8],
+            "pitch": params[9],
+            "distance": params[10],
+            "target": params[11],
+        }
 
     def load_robot(self):
         """
@@ -138,7 +140,7 @@ class Bullet:
                 obstacle_visual_id = p.createVisualShape(
                     shapeType=p.GEOM_BOX,
                     halfExtents=cuboid.half_extents,
-                    rgbaColor=[1, 1, 1, 1],
+                    rgbaColor=[0.85882353, 0.14117647, 0.60392157, 1],
                     physicsClientId=self.clid,
                 )
                 kwargs["baseVisualShapeIndex"] = obstacle_visual_id
@@ -149,7 +151,7 @@ class Bullet:
             )
             obstacle_id = p.createMultiBody(
                 basePosition=cuboid.center,
-                baseOrientation=cuboid.xyzw,
+                baseOrientation=cuboid.pose.so3.xyzw,
                 baseCollisionShapeIndex=obstacle_collision_id,
                 physicsClientId=self.clid,
                 **kwargs,
@@ -215,6 +217,7 @@ class Bullet:
             if id is not None:
                 p.removeBody(id, physicsClientId=self.clid)
         self.obstacle_ids = []
+        self.obstacle_collision_ids = []
 
     def in_collision(self, check_self=False):
         """
@@ -322,8 +325,8 @@ class FrankaEnv(Bullet):
         for i in range(0, 7):
             p.resetJointState(self.robot_id, i, config[i], physicsClientId=self.clid)
         # Spread the fingers if they aren't included--prevents self collision
-        p.resetJointState(self.robot_id, 9, 0.02, physicsClientId=self.clid)
-        p.resetJointState(self.robot_id, 10, 0.02, physicsClientId=self.clid)
+        p.resetJointState(self.robot_id, 9, 0.04, physicsClientId=self.clid)
+        p.resetJointState(self.robot_id, 10, 0.04, physicsClientId=self.clid)
 
 
 class FrankaHandEnv(Bullet):
@@ -384,6 +387,77 @@ class FrankaHandEnv(Bullet):
         # Spread the fingers if they aren't included--prevents self collision
         p.resetJointState(self.robot_id, 4, 0.02, physicsClientId=self.clid)
         p.resetJointState(self.robot_id, 5, 0.02, physicsClientId=self.clid)
+
+
+class FrankaTwoHandsEnv(Bullet):
+    def load_robots(self):
+        if self.robot_id is not None:
+            print("There is already a robot loaded. Removing and reloading")
+            p.removeBody(self.robot_id, physicsClientId=self.clid)
+        self.white_id = p.loadURDF(
+            FrankaHand.urdf,
+            useFixedBase=True,
+            physicsClientId=self.clid,
+            flags=p.URDF_USE_SELF_COLLISION,
+        )
+        # TODO fix this (if I keep this environment)
+        self.urdf_path = None
+
+        self.black_id = p.loadURDF(
+            FrankaBlackHand.urdf,
+            useFixedBase=True,
+            physicsClientId=self.clid,
+            flags=p.URDF_USE_SELF_COLLISION,
+        )
+
+        # Code snippet borrowed from https://pybullet.org/Bullet/phpBB3/viewtopic.php?t=12728
+        # self._setup_robot()
+
+    def marionette(self, pose, frame, hand):
+        assert hand in ["white", "black"]
+        if hand == "white":
+            robot_id = self.white_id
+        else:
+            robot_id = self.black_id
+        assert frame in ["base_frame", "right_gripper", "panda_grasptarget"]
+        # Pose is expressed as a transformation from the desired frame to the world
+        # But we need to transform it into the base frame
+
+        # TODO maybe there is some way to cache these transforms from the urdf
+        # instead of hardcoding them
+        if frame == "right_gripper":
+            transform = SE3(
+                matrix=np.array(
+                    [
+                        [-0.7071067811865475, 0.7071067811865475, 0, 0],
+                        [-0.7071067811865475, -0.7071067811865475, 0, 0],
+                        [0, 0, 1, -0.1],
+                        [0, 0, 0, 1],
+                    ]
+                )
+            )
+            pose = pose @ transform
+        elif frame == "panda_grasptarget":
+            transform = SE3(
+                matrix=np.array(
+                    [
+                        [0.7071067811865475, 0.7071067811865475, 0, 0],
+                        [0.7071067811865475, 0.7071067811865475, 0, 0],
+                        [0, 0, 1, -0.105],
+                        [0, 0, 0, 1],
+                    ]
+                )
+            )
+            pose = pose @ transform
+
+        x, y, z = pose.xyz
+        p.resetJointState(robot_id, 0, x, physicsClientId=self.clid)
+        p.resetJointState(robot_id, 1, y, physicsClientId=self.clid)
+        p.resetJointState(robot_id, 2, z, physicsClientId=self.clid)
+        p.resetJointStateMultiDof(robot_id, 3, pose.so3.xyzw, physicsClientId=self.clid)
+        # Spread the fingers if they aren't included--prevents self collision
+        p.resetJointState(robot_id, 4, 0.02, physicsClientId=self.clid)
+        p.resetJointState(robot_id, 5, 0.02, physicsClientId=self.clid)
 
 
 class FrankaHandArmEnv(Bullet):
