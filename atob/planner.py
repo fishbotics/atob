@@ -422,6 +422,7 @@ class FrankaArmPlanner(Planner):
     def postprocess_path(
         self, path, space_information, shortcut, spline, interpolate, verbose=False
     ):
+        assert path is not None, "Cannot postprocess path that is None"
         simplifier = og.PathSimplifier(space_information)
         start_time = time.time()
         if shortcut:
@@ -430,7 +431,6 @@ class FrankaArmPlanner(Planner):
             simplifier.smoothBSpline(path)
         if verbose:
             print(f"Smoothing time: {time.time() - start_time}")
-
         if interpolate > 0:
             path.interpolate(interpolate)
         path = path_as_python(path, FrankaRobot.DOF)
@@ -477,6 +477,8 @@ class FrankaAITStarPlanner(FrankaArmPlanner):
         # else:
         optimizing_planner.solve(max_runtime)
         path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
+        if path is None:
+            return None
         return self.postprocess_path(
             path,
             space_information,
@@ -517,6 +519,8 @@ class FrankaABITStarPlanner(FrankaArmPlanner):
         path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
         optimizing_planner.solve(max_runtime)
         path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
+        if path is None:
+            return None
         return self.postprocess_path(
             path,
             space_information,
@@ -558,6 +562,8 @@ class FrankaRRTConnectPlanner(FrankaArmPlanner):
 
         start_time = time.time()
         path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
+        if path is None:
+            return None
         return self.postprocess_path(
             path,
             space_information,
@@ -599,6 +605,8 @@ class FrankaRRTPlanner(FrankaArmPlanner):
 
         start_time = time.time()
         path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
+        if path is None:
+            return None
         return self.postprocess_path(
             path,
             space_information,
