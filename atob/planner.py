@@ -401,7 +401,7 @@ class FrankaArmPlanner(Planner):
 
         return space_information, pdef
 
-    def check_solution(self, pdef, elapsed_time, exact=True, verbose=False):
+    def check_solution(self, pdef, exact=True, verbose=False):
         if not pdef.hasSolution():
             if verbose:
                 print("Could not find path")
@@ -410,14 +410,14 @@ class FrankaArmPlanner(Planner):
             if verbose:
                 print("Could not find exact path")
             return None
-
-        if verbose:
-            print(f"Planning time: {elapsed_time}")
-            print(
-                f"Average collision check time: {self.total_collision_checking_time / self.collision_check_counts}"
-            )
-            print(f"Total collision check time: {self.total_collision_checking_time}")
         return pdef.getSolutionPath()
+
+    def communicate_solve_info(self, elapsed_time):
+        print(f"Planning time: {elapsed_time}")
+        print(
+            f"Average collision check time: {self.total_collision_checking_time / self.collision_check_counts}"
+        )
+        print(f"Total collision check time: {self.total_collision_checking_time}")
 
     def postprocess_path(
         self, path, space_information, shortcut, spline, interpolate, verbose=False
@@ -476,7 +476,9 @@ class FrankaAITStarPlanner(FrankaArmPlanner):
         #     )
         # else:
         optimizing_planner.solve(max_runtime)
-        path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
+        if verbose:
+            self.communicate_solve_info(time.time() - start_time)
+        path = self.check_solution(pdef, exact, verbose)
         if path is None:
             return None
         return self.postprocess_path(
@@ -518,7 +520,9 @@ class FrankaABITStarPlanner(FrankaArmPlanner):
         start_time = time.time()
         path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
         optimizing_planner.solve(max_runtime)
-        path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
+        if verbose:
+            self.communicate_solve_info(time.time() - start_time)
+        path = self.check_solution(pdef, exact, verbose)
         if path is None:
             return None
         return self.postprocess_path(
@@ -557,11 +561,11 @@ class FrankaRRTConnectPlanner(FrankaArmPlanner):
         planner.setup()
 
         start_time = time.time()
-        path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
         planner.solve(max_runtime)
 
-        start_time = time.time()
-        path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
+        if verbose:
+            self.communicate_solve_info(time.time() - start_time)
+        path = self.check_solution(pdef, exact, verbose)
         if path is None:
             return None
         return self.postprocess_path(
@@ -600,11 +604,10 @@ class FrankaRRTPlanner(FrankaArmPlanner):
         planner.setup()
 
         start_time = time.time()
-        path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
         planner.solve(max_runtime)
-
-        start_time = time.time()
-        path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
+        if verbose:
+            self.communicate_solve_info(time.time() - start_time)
+        path = self.check_solution(pdef, exact, verbose)
         if path is None:
             return None
         return self.postprocess_path(
