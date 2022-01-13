@@ -1,7 +1,7 @@
 from ompl import base as ob
 from ompl import geometric as og
 
-from atob.robots import FrankaRobot
+from robofin.robots import FrankaRobot
 from atob.errors import ConfigurationError, CollisionError
 
 from geometrout.transform import SE3
@@ -31,22 +31,19 @@ def pose_path_as_python(path):
 
 class Planner:
     def __init__(self):
-        self._scene_created = False
+        self._loaded_environment = False
         self.total_collision_checking_time = 0
         self.collision_check_counts = 0
 
     def reset(self):
         self.sim.clear_all_obstacles()
-        self._scene_created = False
+        self._loaded_environment = False
         self.collision_check_counts = 0
 
-    def set_environment(self, sim, sim_robot):
+    def load_simulation(self, sim, sim_robot):
         self.sim = sim
         self.sim_robot = sim_robot
-
-    def create_scene(self, cuboids):
-        self.sim.load_primitives(cuboids)
-        self._scene_created = True
+        self._loaded_environment = True
 
     def _not_in_collision(self, q):
         current_time = time.time()
@@ -92,7 +89,7 @@ class FrankaHandPlanner(Planner):
         # TODO This currently only works for the Franka because I was too lazy
         # to set it up for other robots
 
-        if not self._scene_created:
+        if not self._loaded_environment:
             raise Exception("Scene not set up yet. Load scene before planning")
 
         # Verify start state is valid
@@ -221,7 +218,7 @@ class FrankaAITStarHandPlanner(FrankaHandPlanner):
         # TODO This currently only works for the Franka because I was too lazy
         # to set it up for other robots
 
-        if not self._scene_created:
+        if not self._loaded_environment:
             raise Exception("Scene not set up yet. Load scene before planning")
 
         # Verify start state is valid
@@ -335,7 +332,7 @@ class FrankaAITStarHandPlanner(FrankaHandPlanner):
         return path
 
 
-class FrankaPlanner(Planner):
+class FrankaArmPlanner(Planner):
     def check_within_range(self, q):
         # TODO Fix this to apply to multiple robots
         for ii in range(FrankaRobot.DOF):
@@ -344,37 +341,18 @@ class FrankaPlanner(Planner):
                 raise ConfigurationError(ii, q[ii], FrankaRobot.JOINT_LIMITS[ii])
         return
 
-    def plan(
-        self,
-        start,
-        goal=None,
-        multi_goal=None,
-        max_runtime=1.0,
-        interpolate=0,
-        verbose=False,
-    ):
-        # TODO This currently only works for the Franka because I was too lazy
-        # to set it up for other robots
-
-        if not self._scene_created:
+    def setup_problem(self, start, goal):
+        if not self._loaded_environment:
             raise Exception("Scene not set up yet. Load scene before planning")
-        if bool(goal is None) == bool(multi_goal is None):
-            raise Exception(
-                "You must provide either a goal or a multi_goal, but not both"
-            )
         # Verify start state is valid
         self.check_within_range(start)
         if not self._not_in_collision(start):
             raise CollisionError(start)
 
-        if goal is not None:
-            # Verify goal state is valid
-            self.check_within_range(goal)
-            if not self._not_in_collision(goal):
-                raise CollisionError(goal)
-        else:
-            # TODO verify multi_goal states
-            pass
+        # Verify goal state is valid
+        self.check_within_range(goal)
+        if not self._not_in_collision(goal):
+            raise CollisionError(goal)
 
         # Define the state space
         space = ob.RealVectorStateSpace(FrankaRobot.DOF)
@@ -414,21 +392,114 @@ class FrankaPlanner(Planner):
             start_state[ii] = start[ii]
         pdef.addStartState(start_state)
 
-        if goal is not None:
-            goal_state = ob.GoalState(space_information)
-            gstate = ob.State(space)
-            for ii in range(FrankaRobot.DOF):
-                gstate[ii] = goal[ii]
-            goal_state.setState(gstate)
-            pdef.setGoal(goal_state)
-        else:
-            goal_states = ob.GoalStates(space_information)
-            for g in multi_goal:
-                gstate = ob.State(space)
-                for ii in range(FrankaRobot.DOF):
-                    gstate[ii] = g[ii]
-                goal_states.addState(gstate)
-            pdef.setGoal(goal_states)
+        goal_state = ob.GoalState(space_information)
+        gstate = ob.State(space)
+        for ii in range(FrankaRobot.DOF):
+            gstate[ii] = goal[ii]
+        goal_state.setState(gstate)
+        pdef.setGoal(goal_state)
+
+        return space_information, pdef
+
+    def check_solution(self, pdef, elapsed_time, exact=True, verbose=False):
+        if not pdef.hasSolution():
+            if verbose:
+                print("Could not find path")
+            return None
+        if exact and not pdef.hasExactSolution():
+            if verbose:
+                print("Could not find exact path")
+            return None
+
+        if verbose:
+            print(f"Planning time: {elapsed_time}")
+            print(
+                f"Average collision check time: {self.total_collision_checking_time / self.collision_check_counts}"
+            )
+            print(f"Total collision check time: {self.total_collision_checking_time}")
+        return pdef.getSolutionPath()
+
+    def postprocess_path(
+        self, path, space_information, shortcut, spline, interpolate, verbose=False
+    ):
+        simplifier = og.PathSimplifier(space_information)
+        start_time = time.time()
+        if shortcut:
+            simplifier.shortcutPath(path)
+        if spline:
+            simplifier.smoothBSpline(path)
+        if verbose:
+            print(f"Smoothing time: {time.time() - start_time}")
+
+        if interpolate > 0:
+            path.interpolate(interpolate)
+        path = path_as_python(path, FrankaRobot.DOF)
+        return path
+
+
+class FrankaAITStarPlanner(FrankaArmPlanner):
+    def plan(
+        self,
+        start,
+        goal,
+        max_runtime=1.0,
+        exact=False,
+        interpolate=0,
+        shortcut=True,
+        spline=True,
+        verbose=False,
+    ):
+        space_information, pdef = self.setup_problem(start, goal)
+
+        # TODO This currently only works for the Franka because I was too lazy
+        # to set it up for other robots
+
+        # The planning problem needs to know what it's optimizing for
+        pdef.setOptimizationObjective(
+            ob.PathLengthOptimizationObjective(space_information)
+        )
+
+        # Set up the actual planner and give it the problem
+        optimizing_planner = og.AITstar(space_information)
+
+        optimizing_planner.setProblemDefinition(pdef)
+        optimizing_planner.setup()
+
+        start_time = time.time()
+        # TODO Fix this after getting a response on https://github.com/ompl/ompl/issues/866
+        # if exact:
+        #     solved = optimizing_planner.solve(
+        #         ob.plannerOrTerminationCondition(
+        #             ob.timedPlannerTerminationCondition(max_runtime),
+        #             ob.exactSolnPlannerTerminationCondition(pdef),
+        #         )
+        #     )
+        # else:
+        optimizing_planner.solve(max_runtime)
+        path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
+        return self.postprocess_path(
+            path,
+            space_information,
+            shortcut,
+            spline=spline,
+            interpolate=0,
+            verbose=verbose,
+        )
+
+
+class FrankaABITStarPlanner(FrankaArmPlanner):
+    def plan(
+        self,
+        start,
+        goal,
+        max_runtime=1.0,
+        exact=False,
+        interpolate=0,
+        shortcut=True,
+        spline=True,
+        verbose=False,
+    ):
+        space_information, pdef = self.setup_problem(start, goal)
 
         # The planning problem needs to know what it's optimizing for
         pdef.setOptimizationObjective(
@@ -443,107 +514,96 @@ class FrankaPlanner(Planner):
         optimizing_planner.setup()
 
         start_time = time.time()
-        # solved = optimizing_planner.solve(ob.CostConvergenceTerminationCondition(pdef))
-        solved = optimizing_planner.solve(max_runtime)
-        if verbose:
-            print(f"Planning time: {time.time() - start_time}")
-            print(
-                f"Average collision check time: {self.total_collision_checking_time / self.collision_check_counts}"
-            )
-            print(f"Total collision check time: {self.total_collision_checking_time}")
-        if not solved:
-            return None
-        path = pdef.getSolutionPath()
-
-        simplifier = og.PathSimplifier(space_information)
-        start_time = time.time()
-        simplifier.shortcutPath(path)
-        simplifier.smoothBSpline(path)
-        if verbose:
-            print(f"Smoothing time: {time.time() - start_time}")
-
-        if interpolate > 0:
-            path.interpolate(interpolate)
-        path = path_as_python(path, FrankaRobot.DOF)
-
-        # TODO add some check to make sure multigoal planner converged
-        if goal is not None and not np.allclose(
-            np.array(path[-1]), np.array(goal), atol=0.01
-        ):
-            print("Planner did not converge to goal")
-            return None
-        return path
+        path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
+        optimizing_planner.solve(max_runtime)
+        path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
+        return self.postprocess_path(
+            path,
+            space_information,
+            shortcut,
+            spline=spline,
+            interpolate=0,
+            verbose=verbose,
+        )
 
 
-class FrankaRRTPlanner(FrankaPlanner):
+class FrankaRRTConnectPlanner(FrankaArmPlanner):
     def plan(
         self,
         start,
         goal,
         max_runtime=1.0,
+        exact=True,
         interpolate=0,
+        shortcut=True,
+        spline=True,
         verbose=False,
     ):
-        # TODO This currently only works for the Franka because I was too lazy
-        # to set it up for other robots
+        space_information, pdef = self.setup_problem(start, goal)
 
-        if not self._scene_created:
-            raise Exception("Scene not set up yet. Load scene before planning")
-        # Verify start state is valid
-        self.check_within_range(start)
-        if not self._not_in_collision(start):
-            raise CollisionError(start)
+        # The planning problem needs to know what it's optimizing for
+        pdef.setOptimizationObjective(
+            ob.PathLengthOptimizationObjective(space_information)
+        )
 
-        # Verify goal state is valid
-        self.check_within_range(goal)
-        if not self._not_in_collision(goal):
-            raise CollisionError(goal)
+        # Set up the actual planner and give it the problem
+        planner = og.RRTConnect(space_information)
 
-        # Define the state space
-        space = ob.RealVectorStateSpace(FrankaRobot.DOF)
+        planner.setProblemDefinition(pdef)
+        planner.setup()
 
-        # Set the boundaries on the state space via the joint limits
-        bounds = ob.RealVectorBounds(FrankaRobot.DOF)
-        for ii in range(FrankaRobot.DOF):
-            low, high = FrankaRobot.JOINT_LIMITS[ii]
-            bounds.setLow(ii, low)
-            bounds.setHigh(ii, high)
-        space.setBounds(bounds)
-
-        ss = og.SimpleSetup(space)
-
-        # Sets the validity checker as a function. This can also be a class if there are
-        # additional methods that need to be defined, for example to use in an optimizing object
-        def collision_checker(q):
-            state = np.zeros(7)
-            for ii in range(7):
-                state[ii] = q[ii]
-            return self._not_in_collision(state)
-
-        ss.setStateValidityChecker(ob.StateValidityCheckerFn(collision_checker))
-
-        # Copy the start and goal states into the OMPL representation
-        start_state = ob.State(space)
-        for ii in range(FrankaRobot.DOF):
-            start_state[ii] = start[ii]
-
-        goal_state = ob.State(space)
-        for ii in range(FrankaRobot.DOF):
-            goal_state[ii] = goal[ii]
-
-        ss.setStartAndGoalStates(start_state, goal_state)
         start_time = time.time()
-        planner = og.RRT(ss.getSpaceInformation())
-        ss.setPlanner(planner)
-        solved = ss.solve()
-        if verbose:
-            print(f"Planning time: {time.time() - start_time}")
-            print(
-                f"Average collision check time: {self.total_collision_checking_time / self.collision_check_counts}"
-            )
-            print(f"Total collision check time: {self.total_collision_checking_time}")
-        if not solved:
-            return None
-        path = ss.getSolutionPath()
-        path = path_as_python(path, FrankaRobot.DOF)
-        return path
+        path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
+        planner.solve(max_runtime)
+
+        start_time = time.time()
+        path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
+        return self.postprocess_path(
+            path,
+            space_information,
+            shortcut,
+            spline=spline,
+            interpolate=0,
+            verbose=verbose,
+        )
+
+
+class FrankaRRTPlanner(FrankaArmPlanner):
+    def plan(
+        self,
+        start,
+        goal,
+        max_runtime=1.0,
+        exact=False,
+        interpolate=0,
+        shortcut=True,
+        spline=True,
+        verbose=False,
+    ):
+        space_information, pdef = self.setup_problem(start, goal)
+
+        # The planning problem needs to know what it's optimizing for
+        pdef.setOptimizationObjective(
+            ob.PathLengthOptimizationObjective(space_information)
+        )
+
+        # Set up the actual planner and give it the problem
+        planner = og.RRT(space_information)
+
+        planner.setProblemDefinition(pdef)
+        planner.setup()
+
+        start_time = time.time()
+        path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
+        planner.solve(max_runtime)
+
+        start_time = time.time()
+        path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
+        return self.postprocess_path(
+            path,
+            space_information,
+            shortcut,
+            spline=spline,
+            interpolate=0,
+            verbose=verbose,
+        )
