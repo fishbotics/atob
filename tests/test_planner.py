@@ -6,6 +6,9 @@ import numpy as np
 
 import atob.planner as planners
 
+# TODO figure out how to set the seed for the planner so
+# these are actually reproducible.
+
 
 class TestFrankaPlanner:
     start = [
