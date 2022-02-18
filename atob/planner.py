@@ -443,6 +443,7 @@ class FrankaAITStarPlanner(FrankaArmPlanner):
         start,
         goal,
         max_runtime=1.0,
+        min_solution_time=1.0,
         exact=False,
         interpolate=0,
         shortcut=True,
@@ -467,15 +468,18 @@ class FrankaAITStarPlanner(FrankaArmPlanner):
 
         start_time = time.time()
         # TODO Fix this after getting a response on https://github.com/ompl/ompl/issues/866
-        # if exact:
-        #     solved = optimizing_planner.solve(
-        #         ob.plannerOrTerminationCondition(
-        #             ob.timedPlannerTerminationCondition(max_runtime),
-        #             ob.exactSolnPlannerTerminationCondition(pdef),
-        #         )
-        #     )
-        # else:
-        optimizing_planner.solve(max_runtime)
+        if exact:
+            solved = optimizing_planner.solve(
+                ob.plannerOrTerminationCondition(
+                    ob.plannerAndTerminationCondition(
+                        ob.timedPlannerTerminationCondition(min_solution_time),
+                        ob.exactSolnPlannerTerminationCondition(pdef),
+                    ),
+                    ob.timedPlannerTerminationCondition(max_runtime),
+                )
+            )
+        else:
+            optimizing_planner.solve(max_runtime)
         if verbose:
             self.communicate_solve_info(time.time() - start_time)
         path = self.check_solution(pdef, exact, verbose)
@@ -497,6 +501,7 @@ class FrankaABITStarPlanner(FrankaArmPlanner):
         start,
         goal,
         max_runtime=1.0,
+        min_solution_time=1.0,
         exact=False,
         interpolate=0,
         shortcut=True,
@@ -518,8 +523,18 @@ class FrankaABITStarPlanner(FrankaArmPlanner):
         optimizing_planner.setup()
 
         start_time = time.time()
-        path = self.check_solution(pdef, time.time() - start_time, exact, verbose)
-        optimizing_planner.solve(max_runtime)
+        if exact:
+            solved = optimizing_planner.solve(
+                ob.plannerOrTerminationCondition(
+                    ob.plannerAndTerminationCondition(
+                        ob.timedPlannerTerminationCondition(min_solution_time),
+                        ob.exactSolnPlannerTerminationCondition(pdef),
+                    ),
+                    ob.timedPlannerTerminationCondition(max_runtime),
+                )
+            )
+        else:
+            optimizing_planner.solve(max_runtime)
         if verbose:
             self.communicate_solve_info(time.time() - start_time)
         path = self.check_solution(pdef, exact, verbose)
