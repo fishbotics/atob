@@ -102,7 +102,7 @@ RUN sudo update-alternatives --install /usr/bin/vi vi /usr/bin/nvim 60 \
   && sudo update-alternatives --install /usr/bin/editor editor /usr/bin/nvim 60 \
   && sudo update-alternatives --config editor
 
-RUN python3 -m pip install geometrout pybullet termcolor numpy git+https://github.com/fishbotics/robofin
+RUN python3 -m pip install geometrout pybullet termcolor numpy pytest git+https://github.com/fishbotics/robofin
 
 RUN sh -c "$(wget -O- https://github.com/deluan/zsh-in-docker/releases/download/v1.1.1/zsh-in-docker.sh)"
 RUN echo "alias ll='ls -lhaFtr'" >> ~/.zshrc
