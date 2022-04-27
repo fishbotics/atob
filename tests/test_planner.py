@@ -3,6 +3,7 @@ from geometrout.primitive import Cuboid
 from robofin.robots import FrankaRobot
 from robofin.bullet import Bullet
 import numpy as np
+from ompl.util import RNG
 
 import atob.planner as planners
 
@@ -11,6 +12,7 @@ import atob.planner as planners
 
 
 class TestFrankaPlanner:
+    RNG.setSeed(10)
     start = [
         0.042770274971548616,
         -0.42466875881207017,

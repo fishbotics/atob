@@ -2,6 +2,7 @@ import math
 import bisect
 import itertools
 import numpy as np
+from robofin.robots import FrankaRobot
 
 """
 This file was inspired by Klampt: http://motion.pratt.duke.edu/klampt/pyklampt_docs/_modules/klampt/model/trajectory.html
@@ -138,11 +139,11 @@ class Trajectory:
         self.velocities = velocities
 
     @classmethod
-    def from_path(cls, path, length=None, dt=None):
+    def from_path(cls, path, length=None, dt=None, robot_type=FrankaRobot):
         assert bool(dt is None) != bool(length is None)
 
-        vmax = np.array([2.1750, 2.1750, 2.1750, 2.1750, 2.6100, 2.6100, 2.6100])
-        amax = np.array([15.0, 7.5, 10.0, 12.5, 15.0, 20.0, 20.0])
+        vmax = robot_type.VELOCITY_LIMIT
+        amax = robot_type.ACCELERATION_LIMIT
         _durations = np.array([0.0] * (len(path) - 1))
         for i in range(len(path) - 1):
             ## In the sequence it goes p, q, r, n

@@ -7,6 +7,7 @@ from atob.errors import ConfigurationError, CollisionError
 from geometrout.transform import SE3
 import time
 import numpy as np
+import random
 
 from pyquaternion import Quaternion
 
@@ -334,23 +335,24 @@ class FrankaAITStarHandPlanner(FrankaHandPlanner):
 
 class FrankaArmPlanner(Planner):
     def check_within_range(self, q):
-        # TODO Fix this to apply to multiple robots
         for ii in range(FrankaRobot.DOF):
             low, high = FrankaRobot.JOINT_LIMITS[ii]
             if q[ii] < low or q[ii] > high:
-                raise ConfigurationError(ii, q[ii], FrankaRobot.JOINT_LIMITS[ii])
-        return
+                return False
+        return True
 
     def setup_problem(self, start, goal):
         if not self._loaded_environment:
             raise Exception("Scene not set up yet. Load scene before planning")
         # Verify start state is valid
-        self.check_within_range(start)
+        if not self.check_within_range(start):
+            raise ConfigurationError(start, FrankaRobot.JOINT_LIMITS)
         if not self._not_in_collision(start):
             raise CollisionError(start)
 
         # Verify goal state is valid
-        self.check_within_range(goal)
+        if not self.check_within_range(goal):
+            raise ConfigurationError(goal, FrankaRobot.JOINT_LIMITS)
         if not self._not_in_collision(goal):
             raise CollisionError(goal)
 
@@ -361,8 +363,8 @@ class FrankaArmPlanner(Planner):
         bounds = ob.RealVectorBounds(FrankaRobot.DOF)
         for ii in range(FrankaRobot.DOF):
             low, high = FrankaRobot.JOINT_LIMITS[ii]
-            bounds.setLow(ii, low)
-            bounds.setHigh(ii, high)
+            bounds.setLow(ii, low + 1e-3)
+            bounds.setHigh(ii, high - 1e-3)
         space.setBounds(bounds)
 
         # Space information is an object that wraps the planning space itself, as well as
@@ -434,7 +436,109 @@ class FrankaArmPlanner(Planner):
         if interpolate > 0:
             path.interpolate(interpolate)
         path = path_as_python(path, FrankaRobot.DOF)
+        if shortcut:
+            path = self.shortcut(path, max_iterations=len(path))
         return path
+
+    def shortcut(self, path, max_iterations=50):
+        indexed_path = list(zip(path, range(len(path))))
+        checked_pairs = set()
+        for _ in range(max_iterations):
+            # First sample two indices without replacement
+            idx0 = random.randint(0, len(indexed_path) - 1)
+            # This is a little trick to just not pick the same index twice
+            idx1 = random.randint(0, len(indexed_path) - 2)
+            if idx1 >= idx0:
+                idx1 += 1
+            # Reset the variable names to be in order
+            idx0, idx1 = (idx0, idx1) if idx1 > idx0 else (idx1, idx0)
+            start, idx_start = indexed_path[idx0]
+            end, idx_end = indexed_path[idx1]
+            # Skip if this pair was already checked
+            if (idx_start, idx_end) in checked_pairs:
+                continue
+
+            # The collision check resolution should never be smaller
+            # than the original path was, so use the indices from the original
+            # path to determine how many collision checks to do
+            shortcut_path = np.linspace(start, end, num=(idx_end - idx_start))
+            good_path = True
+            # Check the shortcut
+            for q in shortcut_path:
+                if not (self.check_within_range(q) and self._not_in_collision(q)):
+                    good_path = False
+                    break
+            if good_path:
+                indexed_path = indexed_path[: idx0 + 1] + indexed_path[idx1:]
+
+            # Add the checked pair into the record to avoid duplicates
+            checked_pairs.add((idx_start, idx_end))
+
+        # TODO move this into a test suite instead of a runtime check
+        assert np.allclose(path[0], indexed_path[0][0])
+        assert np.allclose(path[-1], indexed_path[-1][0])
+        return [p[0] for p in indexed_path]
+
+
+#     def smooth(self, path, max_iterations=50):
+
+
+class FrankaRRTStarPlanner(FrankaArmPlanner):
+    def plan(
+        self,
+        start,
+        goal,
+        max_runtime=1.0,
+        min_solution_time=1.0,
+        exact=False,
+        interpolate=0,
+        shortcut=True,
+        spline=True,
+        verbose=False,
+    ):
+        space_information, pdef = self.setup_problem(start, goal)
+
+        # TODO This currently only works for the Franka because I was too lazy
+        # to set it up for other robots
+
+        # The planning problem needs to know what it's optimizing for
+        pdef.setOptimizationObjective(
+            ob.PathLengthOptimizationObjective(space_information)
+        )
+
+        # Set up the actual planner and give it the problem
+        optimizing_planner = og.RRTstar(space_information)
+
+        optimizing_planner.setProblemDefinition(pdef)
+        optimizing_planner.setup()
+
+        start_time = time.time()
+        # TODO Fix this after getting a response on https://github.com/ompl/ompl/issues/866
+        if exact:
+            solved = optimizing_planner.solve(
+                ob.plannerOrTerminationCondition(
+                    ob.plannerAndTerminationCondition(
+                        ob.timedPlannerTerminationCondition(min_solution_time),
+                        ob.exactSolnPlannerTerminationCondition(pdef),
+                    ),
+                    ob.timedPlannerTerminationCondition(max_runtime),
+                )
+            )
+        else:
+            optimizing_planner.solve(max_runtime)
+        if verbose:
+            self.communicate_solve_info(time.time() - start_time)
+        path = self.check_solution(pdef, exact, verbose)
+        if path is None:
+            return None
+        return self.postprocess_path(
+            path,
+            space_information,
+            shortcut,
+            spline=spline,
+            interpolate=0,
+            verbose=verbose,
+        )
 
 
 class FrankaAITStarPlanner(FrankaArmPlanner):
@@ -471,11 +575,14 @@ class FrankaAITStarPlanner(FrankaArmPlanner):
         if exact:
             solved = optimizing_planner.solve(
                 ob.plannerOrTerminationCondition(
-                    ob.plannerAndTerminationCondition(
-                        ob.timedPlannerTerminationCondition(min_solution_time),
-                        ob.exactSolnPlannerTerminationCondition(pdef),
+                    ob.plannerOrTerminationCondition(
+                        ob.plannerAndTerminationCondition(
+                            ob.timedPlannerTerminationCondition(min_solution_time),
+                            ob.exactSolnPlannerTerminationCondition(pdef),
+                        ),
+                        ob.timedPlannerTerminationCondition(max_runtime),
                     ),
-                    ob.timedPlannerTerminationCondition(max_runtime),
+                    ob.CostConvergenceTerminationCondition(pdef),
                 )
             )
         else:
