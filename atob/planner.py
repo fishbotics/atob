@@ -1,5 +1,6 @@
 from ompl import base as ob
 from ompl import geometric as og
+import logging
 
 from robofin.robots import FrankaRobot
 from atob.errors import ConfigurationError, CollisionError
@@ -10,6 +11,80 @@ import numpy as np
 import random
 
 from pyquaternion import Quaternion
+from scipy.interpolate import CubicHermiteSpline
+
+
+def quickest_two_ramp(qi_n, qj_n, vi_n, vj_n, vmax_n, amax_n):
+    polynomial = np.polynomial.Polynomial(
+        [(vi_n ** 2 - vj_n ** 2) / (2 * amax_n) + (qi_n - qj_n), 2 * vi_n, amax_n]
+    )
+    max_value = abs(vmax_n) / abs(amax_n)
+    roots = polynomial.roots()
+    roots = roots[np.isreal(roots)]
+    roots = roots[roots >= 0]
+    roots = roots[roots <= abs(vmax_n) / abs(amax_n)]
+    roots = roots[abs(vi_n + roots * amax_n) <= vmax_n + 1e-6]
+    if len(roots) == 0:
+        return None
+    T = 2 * np.min(roots) + (vi_n - vj_n) / amax_n
+    return T if T >= 0 else None
+
+
+def quickest_three_stage(qi_n, qj_n, vi_n, vj_n, vmax_n, amax_n):
+    tp1 = (vmax_n - vi_n) / amax_n
+    tl = (vj_n ** 2 + vi_n ** 2 - 2 * vmax_n ** 2) / (2 * vmax_n * amax_n) + (
+        qj_n - qi_n
+    ) / vmax_n
+    tp2 = (vj_n - vmax_n) / -amax_n  # Difference from Hauser
+    if tp1 < 0 or tl < 0 or tp2 < 0:
+        return None
+    return tp1 + tl + tp2
+
+
+def black_magic_duration_bound_1d(qi_n, qj_n, vi_n, vj_n, vmax_n, amax_n):
+    candidates = [
+        quickest_two_ramp(qi_n, qj_n, vi_n, vj_n, vmax_n, amax_n),
+        quickest_two_ramp(qi_n, qj_n, vi_n, vj_n, -vmax_n, -amax_n),
+        quickest_three_stage(qi_n, qj_n, vi_n, vj_n, vmax_n, amax_n),
+        quickest_three_stage(qi_n, qj_n, vi_n, vj_n, -vmax_n, -amax_n),
+    ]
+    candidates = [t for t in candidates if t is not None]
+    if not candidates:
+        return None
+    T = min(t for t in candidates)
+    return max(1e-3, T)
+
+
+def black_magic_duration_bound(qi, qj, vi, vj, vmax, amax):
+    durations = [
+        black_magic_duration_bound_1d(qi_n, qj_n, vi_n, vj_n, vmax_n, amax_n)
+        for qi_n, qj_n, vi_n, vj_n, vmax_n, amax_n in zip(qi, qj, vi, vj, vmax, amax)
+    ]
+    if any(d is None for d in durations):
+        return None
+    return max(durations)
+
+
+def steer_to(start, end, sim, robot, threshold=0.1):
+    """
+    I don't like the name steer_to but other people use it so whatever
+    """
+    # Check which joint has the largest movement
+    which_joint = np.argmax(np.abs(end - start))
+    num_steps = int(np.ceil(np.abs(end[which_joint] - start[which_joint]) / 0.1))
+    return np.linspace(start, end, num=num_steps)
+
+
+def random_indices(N):
+    # First sample two indices without replacement
+    idx0 = random.randint(0, N - 1)
+    # This is a little trick to just not pick the same index twice
+    idx1 = random.randint(0, N - 2)
+    if idx1 >= idx0:
+        idx1 += 1
+    # Reset the variable names to be in order
+    idx0, idx1 = (idx0, idx1) if idx1 > idx0 else (idx1, idx0)
+    return idx0, idx1
 
 
 def path_as_python(path, dof):
@@ -427,6 +502,8 @@ class FrankaArmPlanner(Planner):
         assert path is not None, "Cannot postprocess path that is None"
         simplifier = og.PathSimplifier(space_information)
         start_time = time.time()
+        # TODO maybe can remove the OMPL post-processing now that separate
+        # post-processing is implemented. This requires investigation
         if shortcut:
             simplifier.shortcutPath(path)
         if spline:
@@ -441,17 +518,11 @@ class FrankaArmPlanner(Planner):
         return path
 
     def shortcut(self, path, max_iterations=50):
+        path = np.asarray(path)
         indexed_path = list(zip(path, range(len(path))))
         checked_pairs = set()
         for _ in range(max_iterations):
-            # First sample two indices without replacement
-            idx0 = random.randint(0, len(indexed_path) - 1)
-            # This is a little trick to just not pick the same index twice
-            idx1 = random.randint(0, len(indexed_path) - 2)
-            if idx1 >= idx0:
-                idx1 += 1
-            # Reset the variable names to be in order
-            idx0, idx1 = (idx0, idx1) if idx1 > idx0 else (idx1, idx0)
+            idx0, idx1 = random_indices(len(indexed_path))
             start, idx_start = indexed_path[idx0]
             end, idx_end = indexed_path[idx1]
             # Skip if this pair was already checked
@@ -461,7 +532,7 @@ class FrankaArmPlanner(Planner):
             # The collision check resolution should never be smaller
             # than the original path was, so use the indices from the original
             # path to determine how many collision checks to do
-            shortcut_path = np.linspace(start, end, num=(idx_end - idx_start))
+            shortcut_path = steer_to(start, end, self.sim, self.sim_robot)
             good_path = True
             # Check the shortcut
             for q in shortcut_path:
@@ -479,8 +550,119 @@ class FrankaArmPlanner(Planner):
         assert np.allclose(path[-1], indexed_path[-1][0])
         return [p[0] for p in indexed_path]
 
+    def is_curve_in_collision(self, curve):
+        start, end = curve.x[0], curve.x[-1]
+        timestep = 1e-2
+        for t in np.arange(start, end, timestep):
+            q = curve(t)
+            if not (self.check_within_range(q) and self._not_in_collision(q)):
+                return True
+        return False
 
-#     def smooth(self, path, max_iterations=50):
+    def smooth(self, path, timesteps, max_iterations=50):
+        path = np.asarray(path)
+        amax = FrankaRobot.ACCELERATION_LIMIT
+        vmax = FrankaRobot.ACCELERATION_LIMIT
+        if len(path) <= 2:
+            logging.info("Cannot smooth path with length less than 3")
+            # return path
+        durations = np.zeros(len(path))
+        for idx in range(len(path) - 1):
+            qi, qj = path[idx], path[idx + 1]
+            qh = path[0] if idx == 0 else path[idx - 1]
+            qk = path[-1] if idx == len(path) - 2 else path[idx + 2]
+            velocity = 0.5 * (qj - qh)
+            acc1 = (qj - qi) - (qi - qh)
+            acc2 = (qh - qj) - (qj - qi)
+            v_duration = np.max(np.abs(velocity) / vmax)
+            a1_duration = np.max(np.sqrt(np.abs(acc1) / amax)) if idx > 0 else 0.0
+            a2_duration = (
+                np.max(np.sqrt(np.abs(acc2) / amax)) if idx < len(path) - 2 else 0.0
+            )
+            max_duration = np.max([v_duration, a1_duration, a2_duration])
+            durations[idx + 1] = max(durations[idx + 1], max_duration)
+        timestamps = np.cumsum(durations)
+        velocities = np.zeros_like(path)
+        curve = CubicHermiteSpline(timestamps, path, dydx=velocities)
+        for _ in range(max_iterations):
+            timestamps = curve.x
+            durations[1:] = np.array(
+                [qj - qi for qi, qj in zip(timestamps[:-1], timestamps[1:])]
+            )
+            positions = np.array([curve(t) for t in timestamps])
+            velocities = np.array([curve(t, nu=1) for t in timestamps])
+
+            # Pick two random times (in order)
+            t1, t2 = np.random.uniform(0, timestamps[-1], 2)
+            t1, t2 = (t1, t2) if t1 <= t2 else (t2, t1)
+            position_chunk = np.array([curve(t1), curve(t2)])
+            velocity_chunk = np.array([curve(t1, nu=1), curve(t2, nu=1)])
+            assert np.alltrue(velocity_chunk <= vmax + 1e-5)
+
+            # TODO Re-read https://motion.cs.illinois.edu/papers/icra10-smoothing.pdf
+            # to see if there is a cleaner implementation
+            min_new_duration = black_magic_duration_bound(
+                position_chunk[0],
+                position_chunk[1],
+                velocity_chunk[0],
+                velocity_chunk[1],
+                vmax,
+                amax,
+            )
+
+            # This is an alternative strategy but leads to jerkier motion
+            # v_duration = np.max(
+            #     np.abs(position_chunk[1] - position_chunk[0]) / vmax
+            # )
+            # a_duration = np.max(
+            #     np.sqrt(np.abs(velocity_chunk[1] - velocity_chunk[0]) / amax)
+            # )
+
+            # min_new_duration = np.max([v_duration, a_duration])
+            if min_new_duration is None:
+                logging.info(
+                    "New duration invalid with smoothing selections--moving on"
+                )
+                continue
+
+            # max_new_duration = min(max_new_duration, ramp_new_duration)
+            new_duration = np.random.uniform(min_new_duration, t2 - t1)
+
+            # The last index before t1
+            idx1 = np.argmax(timestamps > t1) - 1
+            # The first index after t2
+            idx2 = np.argmin(timestamps < t2)
+            assert idx2 > idx1
+            timestamp_chunk = [t1, t1 + new_duration]
+            curve_chunk = CubicHermiteSpline(
+                timestamp_chunk, position_chunk, dydx=velocity_chunk
+            )
+            assert (
+                curve.x[-1] - curve.x[0] > t2 - t1
+            ), "Something is wrong with curve calculation"
+            if self.is_curve_in_collision(curve_chunk):
+                continue
+            position_chunk = np.array([curve_chunk(x) for x in curve_chunk.x])
+            velocity_chunk = np.array([curve_chunk(x, nu=1) for x in curve_chunk.x])
+            duration_chunk = np.array(
+                [t1 - timestamps[idx1]]
+                + [x - curve_chunk.x[0] for x in curve_chunk.x[1:]]
+                + [timestamps[idx2] - t2]
+            )
+            # duration chunk is longer than the other chunks
+            durations = np.concatenate(
+                (durations[: idx1 + 1], duration_chunk, durations[idx2 + 1 :])
+            )
+            times = np.cumsum(durations)
+            positions = np.concatenate(
+                (positions[: idx1 + 1], position_chunk, positions[idx2:])
+            )
+            velocities = np.concatenate(
+                (velocities[: idx1 + 1], velocity_chunk, velocities[idx2:])
+            )
+            curve = CubicHermiteSpline(times, positions, dydx=velocities)
+        ts = (curve.x[-1] - curve.x[0]) / (timesteps - 1)
+        return [curve(ts * i) for i in range(timesteps)]
 
 
 class FrankaRRTStarPlanner(FrankaArmPlanner):
@@ -490,7 +672,7 @@ class FrankaRRTStarPlanner(FrankaArmPlanner):
         goal,
         max_runtime=1.0,
         min_solution_time=1.0,
-        exact=False,
+        exact=True,
         interpolate=0,
         shortcut=True,
         spline=True,
