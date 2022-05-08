@@ -597,7 +597,8 @@ class FrankaArmPlanner(Planner):
             t1, t2 = (t1, t2) if t1 <= t2 else (t2, t1)
             position_chunk = np.array([curve(t1), curve(t2)])
             velocity_chunk = np.array([curve(t1, nu=1), curve(t2, nu=1)])
-            assert np.alltrue(velocity_chunk <= vmax + 1e-5)
+            if not np.alltrue(np.abs(velocity_chunk) <= vmax + 1e-5):
+                continue
 
             # TODO Re-read https://motion.cs.illinois.edu/papers/icra10-smoothing.pdf
             # to see if there is a cleaner implementation
