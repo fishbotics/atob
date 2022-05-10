@@ -2,7 +2,7 @@ from ompl import base as ob
 from ompl import geometric as og
 import logging
 
-from robofin.robots import FrankaRobot
+from robofin.robots import FrankaRobot, FrankaRealRobot
 from atob.errors import ConfigurationError, CollisionError
 from atob.caelan_smoothing import smooth_cubic
 
@@ -359,6 +359,15 @@ class FrankaAITStarHandPlanner(FrankaHandPlanner):
 
 
 class FrankaArmPlanner(Planner):
+    def __init__(self, real=True):
+        self._loaded_environment = False
+        self.total_collision_checking_time = 0
+        self.collision_check_counts = 0
+        if real:
+            self.robot_type = FrankaRealRobot
+        else:
+            self.robot_type = FrankaRobot
+
     def load_self_collision_checker(self, checker):
         self.self_collision_checker = checker
 
@@ -375,8 +384,8 @@ class FrankaArmPlanner(Planner):
         return ret
 
     def check_within_range(self, q):
-        for ii in range(FrankaRobot.DOF):
-            low, high = FrankaRobot.JOINT_LIMITS[ii]
+        for ii in range(self.robot_type.DOF):
+            low, high = self.robot_type.JOINT_LIMITS[ii]
             if q[ii] < low or q[ii] > high:
                 return False
         return True
@@ -386,23 +395,23 @@ class FrankaArmPlanner(Planner):
             raise Exception("Scene not set up yet. Load scene before planning")
         # Verify start state is valid
         if not self.check_within_range(start):
-            raise ConfigurationError(start, FrankaRobot.JOINT_LIMITS)
+            raise ConfigurationError(start, self.robot_type.JOINT_LIMITS)
         if not self._not_in_collision(start):
             raise CollisionError(start)
 
         # Verify goal state is valid
         if not self.check_within_range(goal):
-            raise ConfigurationError(goal, FrankaRobot.JOINT_LIMITS)
+            raise ConfigurationError(goal, self.robot_type.JOINT_LIMITS)
         if not self._not_in_collision(goal):
             raise CollisionError(goal)
 
         # Define the state space
-        space = ob.RealVectorStateSpace(FrankaRobot.DOF)
+        space = ob.RealVectorStateSpace(self.robot_type.DOF)
 
         # Set the boundaries on the state space via the joint limits
-        bounds = ob.RealVectorBounds(FrankaRobot.DOF)
-        for ii in range(FrankaRobot.DOF):
-            low, high = FrankaRobot.JOINT_LIMITS[ii]
+        bounds = ob.RealVectorBounds(self.robot_type.DOF)
+        for ii in range(self.robot_type.DOF):
+            low, high = self.robot_type.JOINT_LIMITS[ii]
             bounds.setLow(ii, low + 1e-3)
             bounds.setHigh(ii, high - 1e-3)
         space.setBounds(bounds)
@@ -430,13 +439,13 @@ class FrankaArmPlanner(Planner):
 
         # Copy the start and goal states into the OMPL representation
         start_state = ob.State(space)
-        for ii in range(FrankaRobot.DOF):
+        for ii in range(self.robot_type.DOF):
             start_state[ii] = start[ii]
         pdef.addStartState(start_state)
 
         goal_state = ob.GoalState(space_information)
         gstate = ob.State(space)
-        for ii in range(FrankaRobot.DOF):
+        for ii in range(self.robot_type.DOF):
             gstate[ii] = goal[ii]
         goal_state.setState(gstate)
         pdef.setGoal(goal_state)
@@ -477,7 +486,7 @@ class FrankaArmPlanner(Planner):
             print(f"Smoothing time: {time.time() - start_time}")
         if interpolate > 0:
             path.interpolate(interpolate)
-        path = path_as_python(path, FrankaRobot.DOF)
+        path = path_as_python(path, self.robot_type.DOF)
         if shortcut:
             path = self.shortcut(path, max_iterations=len(path))
         return path
@@ -521,8 +530,8 @@ class FrankaArmPlanner(Planner):
             path,
             lambda q: not self._not_in_collision(q),
             np.radians(3) * np.ones(7),
-            FrankaRobot.VELOCITY_LIMIT,
-            FrankaRobot.ACCELERATION_LIMIT,
+            self.robot_type.VELOCITY_LIMIT,
+            self.robot_type.ACCELERATION_LIMIT,
         )
         ts = (curve.x[-1] - curve.x[0]) / (timesteps - 1)
         return [curve(ts * i) for i in range(timesteps)]
