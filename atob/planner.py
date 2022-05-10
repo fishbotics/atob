@@ -359,6 +359,21 @@ class FrankaAITStarHandPlanner(FrankaHandPlanner):
 
 
 class FrankaArmPlanner(Planner):
+    def load_self_collision_checker(self, checker):
+        self.self_collision_checker = checker
+
+    def _not_in_collision(self, q):
+        current_time = time.time()
+        self.sim_robot.marionette(q)
+        ret = not (
+            self.sim.in_collision(self.sim_robot, check_self=True)
+            or self.self_collision_checker.has_self_collision(q)
+        )
+        total_time = time.time() - current_time
+        self.total_collision_checking_time += total_time
+        self.collision_check_counts += 1
+        return ret
+
     def check_within_range(self, q):
         for ii in range(FrankaRobot.DOF):
             low, high = FrankaRobot.JOINT_LIMITS[ii]
