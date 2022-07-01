@@ -359,10 +359,11 @@ class FrankaAITStarHandPlanner(FrankaHandPlanner):
 
 
 class FrankaArmPlanner(Planner):
-    def __init__(self, real=True):
+    def __init__(self, real=True, sphere_self_collision_checker=True):
         self._loaded_environment = False
         self.total_collision_checking_time = 0
         self.collision_check_counts = 0
+        self.sphere_self_collision_checker = sphere_self_collision_checker
         if real:
             self.robot_type = FrankaRealRobot
         else:
@@ -374,10 +375,13 @@ class FrankaArmPlanner(Planner):
     def _not_in_collision(self, q):
         current_time = time.time()
         self.sim_robot.marionette(q)
-        ret = not (
-            self.sim.in_collision(self.sim_robot, check_self=True)
-            or self.self_collision_checker.has_self_collision(q)
-        )
+        if self.sphere_self_collision_checker:
+            ret = not (
+                self.sim.in_collision(self.sim_robot, check_self=True)
+                or self.self_collision_checker.has_self_collision(q)
+            )
+        else:
+            ret = not self.sim.in_collision(self.sim_robot, check_self=True)
         total_time = time.time() - current_time
         self.total_collision_checking_time += total_time
         self.collision_check_counts += 1
