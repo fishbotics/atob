@@ -1,6 +1,8 @@
 # atob
 This library is meant to be an easy-to-use planning framework written in Python. The intention of this project is to create a standard, simple, fast, and flexible planner with a stable Python API. While working toward this, the guts that make this possible may change significantly. Currently, it is written to use Pybullet for collision checking and OMPL for planning.
 
+This project is __heavily__ in development and the API is subject to break at anytime. If you require this library for any specific task, you should pin your work to a particular branch or tag. The API changes will eventually slow down (either because this project will either stabilize or die off), but in the meantime, please take care to not break all your hard work by expecting the API to be consistent. 
+
 The easiest way to get started is to build the code using the included docker file. This will install the necessary dependencies. I'd like it if this could be installed via `pip` or `conda` someday, but that requires quite a few changes for OMPL, which is currently very not `pip` friendly.
 
 First, clone the repo. You can clone it wherever you want, but I'll use `$HOME` in the documentation.
