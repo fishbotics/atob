@@ -51,7 +51,7 @@ def pose_path_as_python(path):
         rot = pose.rotation()
         quat = Quaternion([rot.w, rot.x, rot.y, rot.z])
         xyz = np.array([pose.getX(), pose.getY(), pose.getZ()])
-        pypath.append(SE3(xyz=xyz, quat=quat))
+        pypath.append(SE3(xyz=xyz, quaternion=quat))
     return pypath
 
 
@@ -146,7 +146,7 @@ class FrankaHandPlanner(Planner):
             rot = q.rotation()
             quat = Quaternion([rot.w, rot.x, rot.y, rot.z])
             xyz = np.array([q.getX(), q.getY(), q.getZ()])
-            return self._not_in_collision(SE3(xyz=xyz, quat=quat), frame)
+            return self._not_in_collision(SE3(xyz=xyz, quaternion=quat), frame)
 
         # Sets the validity checker as a function. This can also be a class if there are
         # additional methods that need to be defined, for example to use in an optimizing object
@@ -275,7 +275,7 @@ class FrankaAITStarHandPlanner(FrankaHandPlanner):
             rot = q.rotation()
             quat = Quaternion([rot.w, rot.x, rot.y, rot.z])
             xyz = np.array([q.getX(), q.getY(), q.getZ()])
-            return self._not_in_collision(SE3(xyz=xyz, quat=quat), frame)
+            return self._not_in_collision(SE3(xyz=xyz, quaternion=quat), frame)
 
         # Sets the validity checker as a function. This can also be a class if there are
         # additional methods that need to be defined, for example to use in an optimizing object
