@@ -99,7 +99,7 @@ class FrankaHandPlanner(Planner):
     def _not_in_collision(self, q, frame):
         current_time = time.time()
         self.sim_robot.marionette(q, frame)
-        ret = not self.sim.in_collision(self.sim_robot, check_self=True)
+        ret = not self.sim.in_collision(self.sim_robot)
         total_time = time.time() - current_time
         self.total_collision_checking_time += total_time
         self.collision_check_counts += 1
