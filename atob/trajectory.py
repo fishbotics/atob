@@ -113,10 +113,10 @@ class SplineTrajectory:
         assert x1.shape == x2.shape
         assert x2.shape == v2.shape
         return (
-            (2 * u ** 3 - 3 * u ** 2 + 1.0) * x1
-            + (-2 * u ** 3 + 3 * u ** 2) * x2
-            + (u ** 3 - 2 * u ** 2 + u) * v1
-            + (u ** 3 - u ** 2) * v2
+            (2 * u**3 - 3 * u**2 + 1.0) * x1
+            + (-2 * u**3 + 3 * u**2) * x2
+            + (u**3 - 2 * u**2 + u) * v1
+            + (u**3 - u**2) * v2
         )
 
     @staticmethod
@@ -126,9 +126,9 @@ class SplineTrajectory:
         assert x1.shape == x2.shape
         assert x2.shape == v2.shape
         return (
-            (6.0 * u ** 2 - 6.0 * u) * (x1 - x2)
-            + (3.0 * u ** 2 - 4.0 * u + 1) * v1
-            + (3.0 * u ** 2 - 2.0 * u) * v2
+            (6.0 * u**2 - 6.0 * u) * (x1 - x2)
+            + (3.0 * u**2 - 4.0 * u + 1) * v1
+            + (3.0 * u**2 - 2.0 * u) * v2
         )
 
 
@@ -198,7 +198,7 @@ class Trajectory:
             q, r = trajectory.milestones[i], trajectory.milestones[i + 1]
             p = q if i == 0 else trajectory.milestones[i - 1]
             v = 0.5 * (r - p)
-            a = ((r - q) - (q - p)) / dt ** 2
+            a = ((r - q) - (q - p)) / dt**2
             for x, lim in zip(v, vmax):
                 if abs(x) > lim * vscaling:
                     vscaling = abs(x) / lim
@@ -206,7 +206,7 @@ class Trajectory:
             if i == 0:
                 continue
             for x, lim in zip(a, amax):
-                if abs(x) > lim * scaling ** 2:
+                if abs(x) > lim * scaling**2:
                     scaling = math.sqrt(abs(x) / lim)
                     aLimitingTime = i
         scaling = max(vscaling, scaling)

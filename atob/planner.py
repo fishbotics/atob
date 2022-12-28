@@ -60,6 +60,7 @@ class Planner:
         self._loaded_environment = False
         self.total_collision_checking_time = 0
         self.collision_check_counts = 0
+        self.collision_radius = 0.0
 
     def reset(self):
         self.sim.clear_all_obstacles()
@@ -74,7 +75,9 @@ class Planner:
     def _not_in_collision(self, q):
         current_time = time.time()
         self.sim_robot.marionette(q)
-        ret = not self.sim.in_collision(self.sim_robot, check_self=True)
+        ret = not self.sim.in_collision(
+            self.sim_robot, self.collision_radius, check_self=True
+        )
         total_time = time.time() - current_time
         self.total_collision_checking_time += total_time
         self.collision_check_counts += 1
@@ -395,6 +398,7 @@ class FrankaArmPlanner(Planner):
         return True
 
     def setup_problem(self, start, goal):
+        self.last_problem_stats = {}
         if not self._loaded_environment:
             raise Exception("Scene not set up yet. Load scene before planning")
         # Verify start state is valid
@@ -416,8 +420,9 @@ class FrankaArmPlanner(Planner):
         bounds = ob.RealVectorBounds(self.robot_type.DOF)
         for ii in range(self.robot_type.DOF):
             low, high = self.robot_type.JOINT_LIMITS[ii]
-            bounds.setLow(ii, low + 1e-3)
-            bounds.setHigh(ii, high - 1e-3)
+            # TODO don't commit this change without thinking it through--ideally starts and goals should never be at the joint limits
+            bounds.setLow(ii, low)
+            bounds.setHigh(ii, high)
         space.setBounds(bounds)
 
         # Space information is an object that wraps the planning space itself, as well as
@@ -467,7 +472,8 @@ class FrankaArmPlanner(Planner):
             return None
         return pdef.getSolutionPath()
 
-    def communicate_solve_info(self, elapsed_time):
+    def communicate_solve_info(self):
+        elapsed_time = self.last_problem_stats["solve_time"]
         print(f"Planning time: {elapsed_time}")
         print(
             f"Average collision check time: {self.total_collision_checking_time / self.collision_check_counts}"
@@ -475,24 +481,43 @@ class FrankaArmPlanner(Planner):
         print(f"Total collision check time: {self.total_collision_checking_time}")
 
     def postprocess_path(
-        self, path, space_information, shortcut, spline, interpolate, verbose=False
+        self,
+        path,
+        space_information,
+        shortcut_strategy,
+        spline,
+        interpolate,
+        verbose=False,
     ):
         assert path is not None, "Cannot postprocess path that is None"
+        for strategy in shortcut_strategy:
+            assert strategy in ["ompl", "python"]
         simplifier = og.PathSimplifier(space_information)
-        start_time = time.time()
         # TODO maybe can remove the OMPL post-processing now that separate
         # post-processing is implemented. This requires investigation
-        if shortcut:
+        if len(shortcut_strategy) > 0:
+            self.last_problem_stats["shortcut_time"] = {}
+        if "ompl" in shortcut_strategy:
+            start_time = time.time()
             simplifier.shortcutPath(path)
+            self.last_problem_stats["shortcut_time"]["ompl"] = time.time() - start_time
         if spline:
+            start_time = time.time()
             simplifier.smoothBSpline(path)
+            self.last_problem_stats["ompl_spline_time"] = time.time() - start_time
         if verbose:
-            print(f"Smoothing time: {time.time() - start_time}")
+            print(f"Smoothing time: {self.last_problem_stats['ompl_spline_time']}")
         if interpolate > 0:
+            start_time = time.time()
             path.interpolate(interpolate)
+            self.last_problem_stats["interpolation_time"] = time.time() - start_time
         path = path_as_python(path, self.robot_type.DOF)
-        if shortcut:
+        if "python" in shortcut_strategy:
+            start_time = time.time()
             path = self.shortcut(path, max_iterations=len(path))
+            self.last_problem_stats["shortcut_time"]["python"] = (
+                time.time() - start_time
+            )
         return path
 
     def shortcut(self, path, max_iterations=50):
@@ -550,7 +575,7 @@ class FrankaRRTStarPlanner(FrankaArmPlanner):
         min_solution_time=1.0,
         exact=True,
         interpolate=0,
-        shortcut=True,
+        shortcut_strategy=["python"],
         spline=True,
         verbose=False,
     ):
@@ -584,15 +609,16 @@ class FrankaRRTStarPlanner(FrankaArmPlanner):
             )
         else:
             optimizing_planner.solve(max_runtime)
+        self.last_problem_stats["solve_time"] = time.time() - start_time
         if verbose:
-            self.communicate_solve_info(time.time() - start_time)
+            self.communicate_solve_info()
         path = self.check_solution(pdef, exact, verbose)
         if path is None:
             return None
         return self.postprocess_path(
             path,
             space_information,
-            shortcut,
+            shortcut_strategy,
             spline=spline,
             interpolate=0,
             verbose=verbose,
@@ -608,7 +634,7 @@ class FrankaAITStarPlanner(FrankaArmPlanner):
         min_solution_time=1.0,
         exact=False,
         interpolate=0,
-        shortcut=True,
+        shortcut_strategy=["python"],
         spline=True,
         verbose=False,
     ):
@@ -645,15 +671,16 @@ class FrankaAITStarPlanner(FrankaArmPlanner):
             )
         else:
             optimizing_planner.solve(max_runtime)
+        self.last_problem_stats["solve_time"] = time.time() - start_time
         if verbose:
-            self.communicate_solve_info(time.time() - start_time)
+            self.communicate_solve_info()
         path = self.check_solution(pdef, exact, verbose)
         if path is None:
             return None
         return self.postprocess_path(
             path,
             space_information,
-            shortcut,
+            shortcut_strategy,
             spline=spline,
             interpolate=0,
             verbose=verbose,
@@ -669,7 +696,7 @@ class FrankaABITStarPlanner(FrankaArmPlanner):
         min_solution_time=1.0,
         exact=False,
         interpolate=0,
-        shortcut=True,
+        shortcut_strategy=["python"],
         spline=True,
         verbose=False,
     ):
@@ -700,15 +727,16 @@ class FrankaABITStarPlanner(FrankaArmPlanner):
             )
         else:
             optimizing_planner.solve(max_runtime)
+        self.last_problem_stats["solve_time"] = time.time() - start_time
         if verbose:
-            self.communicate_solve_info(time.time() - start_time)
+            self.communicate_solve_info()
         path = self.check_solution(pdef, exact, verbose)
         if path is None:
             return None
         return self.postprocess_path(
             path,
             space_information,
-            shortcut,
+            shortcut_strategy,
             spline=spline,
             interpolate=0,
             verbose=verbose,
@@ -723,16 +751,16 @@ class FrankaRRTConnectPlanner(FrankaArmPlanner):
         max_runtime=1.0,
         exact=True,
         interpolate=0,
-        shortcut=True,
+        shortcut_strategy=["python"],
         spline=True,
         verbose=False,
     ):
         space_information, pdef = self.setup_problem(start, goal)
 
         # The planning problem needs to know what it's optimizing for
-        pdef.setOptimizationObjective(
-            ob.PathLengthOptimizationObjective(space_information)
-        )
+        # pdef.setOptimizationObjective(
+        #     ob.PathLengthOptimizationObjective(space_information)
+        # )
 
         # Set up the actual planner and give it the problem
         planner = og.RRTConnect(space_information)
@@ -743,15 +771,16 @@ class FrankaRRTConnectPlanner(FrankaArmPlanner):
         start_time = time.time()
         planner.solve(max_runtime)
 
+        self.last_problem_stats["solve_time"] = time.time() - start_time
         if verbose:
-            self.communicate_solve_info(time.time() - start_time)
+            self.communicate_solve_info()
         path = self.check_solution(pdef, exact, verbose)
         if path is None:
             return None
         return self.postprocess_path(
             path,
             space_information,
-            shortcut,
+            shortcut_strategy,
             spline=spline,
             interpolate=0,
             verbose=verbose,
@@ -766,7 +795,7 @@ class FrankaRRTPlanner(FrankaArmPlanner):
         max_runtime=1.0,
         exact=False,
         interpolate=0,
-        shortcut=True,
+        shortcut_strategy=["python"],
         spline=True,
         verbose=False,
     ):
@@ -785,15 +814,16 @@ class FrankaRRTPlanner(FrankaArmPlanner):
 
         start_time = time.time()
         planner.solve(max_runtime)
+        self.last_problem_stats["solve_time"] = time.time() - start_time
         if verbose:
-            self.communicate_solve_info(time.time() - start_time)
+            self.communicate_solve_info()
         path = self.check_solution(pdef, exact, verbose)
         if path is None:
             return None
         return self.postprocess_path(
             path,
             space_information,
-            shortcut,
+            shortcut_strategy,
             spline=spline,
             interpolate=0,
             verbose=verbose,
