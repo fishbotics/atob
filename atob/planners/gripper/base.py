@@ -16,9 +16,12 @@ def pose_path_as_python(path):
     for ii in range(path_length):
         pose = path.getState(ii)
         rot = pose.rotation()
-        quat = Quaternion([rot.w, rot.x, rot.y, rot.z])
-        xyz = np.array([pose.getX(), pose.getY(), pose.getZ()])
-        pypath.append(SE3(xyz=xyz, quaternion=quat))
+        pypath.append(
+            SE3(
+                np.array([pose.getX(), pose.getY(), pose.getZ()]),
+                np.array([rot.w, rot.x, rot.y, rot.z]),
+            )
+        )
     return pypath
 
 
@@ -74,9 +77,13 @@ class FrankaGripperBase(Planner):
 
         def check_collision(q):
             rot = q.rotation()
-            quat = Quaternion([rot.w, rot.x, rot.y, rot.z])
-            xyz = np.array([q.getX(), q.getY(), q.getZ()])
-            return self._not_in_collision(SE3(xyz=xyz, quaternion=quat), frame)
+            return self._not_in_collision(
+                SE3(
+                    np.array([q.getX(), q.getY(), q.getZ()]),
+                    np.array([rot.w, rot.x, rot.y, rot.z]),
+                ),
+                frame,
+            )
 
         # Sets the validity checker as a function. This can also be a class if there are
         # additional methods that need to be defined, for example to use in an optimizing object

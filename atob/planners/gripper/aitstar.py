@@ -4,7 +4,7 @@ from ompl import base as ob
 from ompl import geometric as og
 from pyquaternion import Quaternion
 import numpy as np
-from geometrout.transform import SE3
+from geometrout import SE3
 
 from atob.planners.gripper.base import FrankaGripperBase, pose_path_as_python
 from atob.errors import ConfigurationError, CollisionError
@@ -53,9 +53,10 @@ class AITStar(FrankaGripperBase):
 
         def check_collision(q):
             rot = q.rotation()
-            quat = Quaternion([rot.w, rot.x, rot.y, rot.z])
             xyz = np.array([q.getX(), q.getY(), q.getZ()])
-            return self._not_in_collision(SE3(xyz=xyz, quaternion=quat), frame)
+            return self._not_in_collision(
+                SE3(xyz, np.array([rot.w, rot.x, rot.y, rot.z])), frame
+            )
 
         # Sets the validity checker as a function. This can also be a class if there are
         # additional methods that need to be defined, for example to use in an optimizing object
