@@ -10,7 +10,7 @@ from atob.planners.gripper.base import FrankaGripperBase, pose_path_as_python
 from atob.errors import ConfigurationError, CollisionError
 
 
-class AITStar(FrankaGripperBase):
+class FrankaGripperAITStar(FrankaGripperBase):
     def plan(
         self,
         start,

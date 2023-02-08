@@ -6,7 +6,7 @@ from ompl import geometric as og
 from atob.planners.arm.base import FrankaArmBase
 
 
-class FrankaRRTConnectPlanner(FrankaArmBase):
+class FrankaRRTConnect(FrankaArmBase):
     def plan(
         self,
         start,
