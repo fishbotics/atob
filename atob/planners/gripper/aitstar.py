@@ -1,13 +1,12 @@
 import time
 
-from ompl import base as ob
-from ompl import geometric as og
-from pyquaternion import Quaternion
 import numpy as np
 from geometrout import SE3
+from ompl import base as ob
+from ompl import geometric as og
 
+from atob.errors import CollisionError, ConfigurationError
 from atob.planners.gripper.base import FrankaGripperBase, pose_path_as_python
-from atob.errors import ConfigurationError, CollisionError
 
 
 class FrankaGripperAITStar(FrankaGripperBase):

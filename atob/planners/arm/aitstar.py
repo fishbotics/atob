@@ -5,22 +5,7 @@ from ompl import geometric as og
 
 from atob.planners.arm.base import FrankaArmBase
 
-# class EefPathOptimizationObjective(ob.OptimizationObjective):
-#
-#     def __init__(si):
-#         pass
-#
-#     def stateCost(s):
-#         pass
-#
-#     def motionCost(s):
-#         pass
-#
-#     def motionCostHeuristic(s1, s2):
-#         pass
-#
-#     def
-#
+
 class FrankaAITStar(FrankaArmBase):
     def plan(
         self,

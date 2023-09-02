@@ -1,13 +1,12 @@
 import time
 
-from ompl import base as ob
-from ompl import geometric as og
-from pyquaternion import Quaternion
 import numpy as np
 from geometrout.transform import SE3
+from ompl import base as ob
+from ompl import geometric as og
 
+from atob.errors import CollisionError, ConfigurationError
 from atob.planners.base import Planner
-from atob.errors import ConfigurationError, CollisionError
 
 
 def pose_path_as_python(path):

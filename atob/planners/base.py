@@ -1,4 +1,5 @@
 import time
+from robofin.kinematics.collision import FrankaCollisionSpheres
 
 
 class Planner:
@@ -7,27 +8,22 @@ class Planner:
         self.total_collision_checking_time = 0
         self.collision_check_counts = 0
         self.collision_radius = 0.0
+        self.cooo = FrankaCollisionSpheres()
+        self.scene_obstacles = []
 
     def reset(self):
-        self.sim.clear_all_obstacles()
+        self.scene_obstacles = []
         self._loaded_environment = False
         self.collision_check_counts = 0
 
-    def load_simulation(self, sim, sim_robot):
-        self.sim = sim
-        self.sim_robot = sim_robot
+    def load_scene(self, primitives):
+        self.scene_obstacles.extend(primitives)
         self._loaded_environment = True
 
-    def _not_in_collision(self, q):
-        current_time = time.time()
-        self.sim_robot.marionette(q)
-        ret = not self.sim.in_collision(
-            self.sim_robot, self.collision_radius, check_self=True
+    def _not_in_collision(self, q, prismatic_joint):
+        raise NotImplementedError(
+            "Collision function must be implemented in subclasses"
         )
-        total_time = time.time() - current_time
-        self.total_collision_checking_time += total_time
-        self.collision_check_counts += 1
-        return ret
 
     def plan(
         self,

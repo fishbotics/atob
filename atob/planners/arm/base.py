@@ -1,13 +1,14 @@
-import time
 import random
+import time
 
-from robofin.robots import FrankaRobot, FrankaRealRobot
 import numpy as np
 from ompl import base as ob
 from ompl import geometric as og
+from robofin.kinematics.collision import franka_arm_collides
+from robofin.robots import FrankaRealRobot, FrankaRobot
 
 from atob.caelan_smoothing import smooth_cubic
-from atob.errors import ConfigurationError, CollisionError
+from atob.errors import CollisionError, ConfigurationError
 from atob.planners.base import Planner
 
 
@@ -28,7 +29,7 @@ def path_as_python(path, dof):
     return [[path.getState(ii)[j] for j in range(dof)] for ii in range(path_length)]
 
 
-def steer_to(start, end, sim, robot, threshold=0.1):
+def steer_to(start, end, threshold=0.1):
     """
     I don't like the name steer_to but other people use it so whatever
     """
@@ -39,33 +40,24 @@ def steer_to(start, end, sim, robot, threshold=0.1):
 
 
 class FrankaArmBase(Planner):
-    def __init__(self, real=True, sphere_self_collision_checker=True):
-        self._loaded_environment = False
-        self.total_collision_checking_time = 0
-        self.collision_check_counts = 0
-        self.sphere_self_collision_checker = sphere_self_collision_checker
+    def __init__(self, prismatic_joint, buffer, real=True):
+        super().__init__()
+        self.prismatic_joint = prismatic_joint
+        self.buffer = buffer
         if real:
             self.robot_type = FrankaRealRobot
         else:
             self.robot_type = FrankaRobot
 
-    def load_self_collision_checker(self, checker):
-        self.self_collision_checker = checker
-
     def _not_in_collision(self, q):
         current_time = time.time()
-        self.sim_robot.marionette(q)
-        if self.sphere_self_collision_checker:
-            ret = not (
-                self.sim.in_collision(self.sim_robot, check_self=True)
-                or self.self_collision_checker.has_self_collision(q)
-            )
-        else:
-            ret = not self.sim.in_collision(self.sim_robot, check_self=True)
+        collision_free = not franka_arm_collides(
+            q, self.prismatic_joint, self.cooo, self.scene_obstacles, self.buffer
+        )
         total_time = time.time() - current_time
         self.total_collision_checking_time += total_time
         self.collision_check_counts += 1
-        return ret
+        return collision_free
 
     def check_within_range(self, q):
         for ii in range(self.robot_type.DOF):
@@ -215,7 +207,7 @@ class FrankaArmBase(Planner):
             # The collision check resolution should never be smaller
             # than the original path was, so use the indices from the original
             # path to determine how many collision checks to do
-            shortcut_path = steer_to(start, end, self.sim, self.sim_robot)
+            shortcut_path = steer_to(start, end)
             good_path = True
             # Check the shortcut
             for q in shortcut_path:
@@ -233,7 +225,10 @@ class FrankaArmBase(Planner):
         assert np.allclose(path[-1], indexed_path[-1][0])
         return [p[0] for p in indexed_path]
 
-    def smooth(self, path, timesteps):
+    def smooth(self, path, num_timesteps=None, fixed_timestep=None):
+        assert (num_timesteps is None) != (
+            fixed_timestep is None
+        ), "Must either set num_timesteps or fixed_timestep"
         # TODO this code needs to be cleaned up
         curve = smooth_cubic(
             path,
@@ -242,5 +237,11 @@ class FrankaArmBase(Planner):
             self.robot_type.VELOCITY_LIMIT,
             self.robot_type.ACCELERATION_LIMIT,
         )
-        ts = (curve.x[-1] - curve.x[0]) / (timesteps - 1)
-        return [curve(ts * i) for i in range(timesteps)]
+        if fixed_timestep is None:
+            assert num_timesteps is not None  # Needed for typechecking
+            fixed_timestep = (curve.x[-1] - curve.x[0]) / (num_timesteps - 1)
+        else:
+            num_timesteps = int(
+                np.ceil(1 + (curve.x[-1] - curve.x[0]) / fixed_timestep)
+            )
+        return [curve(fixed_timestep * i) for i in range(num_timesteps)]
