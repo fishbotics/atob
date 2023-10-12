@@ -1,8 +1,8 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 setup(
     name="atob",
-    version="0.0.2",
+    version="0.0.3",
     packages=find_packages(),
     install_requires=[
         # 'pybullet',

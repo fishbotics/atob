@@ -1,4 +1,13 @@
 import time
+
+from geometrout.primitive import (
+    Cuboid,
+    CuboidArray,
+    Cylinder,
+    CylinderArray,
+    Sphere,
+    SphereArray,
+)
 from robofin.kinematics.collision import FrankaCollisionSpheres
 
 
@@ -9,15 +18,34 @@ class Planner:
         self.collision_check_counts = 0
         self.collision_radius = 0.0
         self.cooo = FrankaCollisionSpheres()
-        self.scene_obstacles = []
+        self.scene_obstacle_arrays = []
 
     def reset(self):
-        self.scene_obstacles = []
+        self.scene_obstacle_arrays = []
         self._loaded_environment = False
         self.collision_check_counts = 0
 
     def load_scene(self, primitives):
-        self.scene_obstacles.extend(primitives)
+        spheres = []
+        cuboids = []
+        cylinders = []
+        for o in primitives:
+            if isinstance(o, Sphere):
+                spheres.append(o)
+            elif isinstance(o, Cuboid):
+                cuboids.append(o)
+            elif isinstance(o, Cylinder):
+                cylinders.append(o)
+            else:
+                raise NotImplementedError(f"Unsupport primitive of type {type(o)}")
+
+        self.scene_obstacle_arrays.extend(
+            [
+                SphereArray(spheres),
+                CuboidArray(cuboids),
+                CylinderArray(cylinders),
+            ]
+        )
         self._loaded_environment = True
 
     def _not_in_collision(self, q, prismatic_joint):

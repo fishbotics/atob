@@ -4,7 +4,7 @@ import time
 import numpy as np
 from ompl import base as ob
 from ompl import geometric as og
-from robofin.kinematics.collision import franka_arm_collides
+from robofin.kinematics.collision import franka_arm_collides_fast
 from robofin.robots import FrankaRealRobot, FrankaRobot
 
 from atob.caelan_smoothing import smooth_cubic
@@ -51,8 +51,8 @@ class FrankaArmBase(Planner):
 
     def _not_in_collision(self, q):
         current_time = time.time()
-        collision_free = not franka_arm_collides(
-            q, self.prismatic_joint, self.cooo, self.scene_obstacles, self.buffer
+        collision_free = not franka_arm_collides_fast(
+            q, self.prismatic_joint, self.cooo, self.scene_obstacle_arrays, self.buffer
         )
         total_time = time.time() - current_time
         self.total_collision_checking_time += total_time
