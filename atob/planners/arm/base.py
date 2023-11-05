@@ -5,7 +5,7 @@ import numpy as np
 from ompl import base as ob
 from ompl import geometric as og
 from robofin.kinematics.collision import franka_arm_collides_fast
-from robofin.robots import FrankaRealRobot, FrankaRobot
+from robofin.robot_constants import FrankaConstants, RealFrankaConstants
 
 from atob.caelan_smoothing import smooth_cubic
 from atob.errors import CollisionError, ConfigurationError
@@ -45,9 +45,9 @@ class FrankaArmBase(Planner):
         self.prismatic_joint = prismatic_joint
         self.buffer = buffer
         if real:
-            self.robot_type = FrankaRealRobot
+            self.robot_constants = RealFrankaConstants
         else:
-            self.robot_type = FrankaRobot
+            self.robot_constants = FrankaConstants
 
     def _not_in_collision(self, q):
         current_time = time.time()
@@ -60,8 +60,8 @@ class FrankaArmBase(Planner):
         return collision_free
 
     def check_within_range(self, q):
-        for ii in range(self.robot_type.DOF):
-            low, high = self.robot_type.JOINT_LIMITS[ii]
+        for ii in range(self.robot_constants.DOF):
+            low, high = self.robot_constants.JOINT_LIMITS[ii]
             if q[ii] < low or q[ii] > high:
                 return False
         return True
@@ -72,23 +72,23 @@ class FrankaArmBase(Planner):
             raise Exception("Scene not set up yet. Load scene before planning")
         # Verify start state is valid
         if not self.check_within_range(start):
-            raise ConfigurationError(start, self.robot_type.JOINT_LIMITS)
+            raise ConfigurationError(start, self.robot_constants.JOINT_LIMITS)
         if not self._not_in_collision(start):
             raise CollisionError(start)
 
         # Verify goal state is valid
         if not self.check_within_range(goal):
-            raise ConfigurationError(goal, self.robot_type.JOINT_LIMITS)
+            raise ConfigurationError(goal, self.robot_constants.JOINT_LIMITS)
         if not self._not_in_collision(goal):
             raise CollisionError(goal)
 
         # Define the state space
-        space = ob.RealVectorStateSpace(self.robot_type.DOF)
+        space = ob.RealVectorStateSpace(self.robot_constants.DOF)
 
         # Set the boundaries on the state space via the joint limits
-        bounds = ob.RealVectorBounds(self.robot_type.DOF)
-        for ii in range(self.robot_type.DOF):
-            low, high = self.robot_type.JOINT_LIMITS[ii]
+        bounds = ob.RealVectorBounds(self.robot_constants.DOF)
+        for ii in range(self.robot_constants.DOF):
+            low, high = self.robot_constants.JOINT_LIMITS[ii]
             # TODO don't commit this change without thinking it through
             # ideally starts and goals should never be at the joint limits
             bounds.setLow(ii, low)
@@ -118,13 +118,13 @@ class FrankaArmBase(Planner):
 
         # Copy the start and goal states into the OMPL representation
         start_state = ob.State(space)
-        for ii in range(self.robot_type.DOF):
+        for ii in range(self.robot_constants.DOF):
             start_state[ii] = start[ii]
         pdef.addStartState(start_state)
 
         goal_state = ob.GoalState(space_information)
         gstate = ob.State(space)
-        for ii in range(self.robot_type.DOF):
+        for ii in range(self.robot_constants.DOF):
             gstate[ii] = goal[ii]
         goal_state.setState(gstate)
         pdef.setGoal(goal_state)
@@ -183,7 +183,7 @@ class FrankaArmBase(Planner):
             start_time = time.time()
             path.interpolate(interpolate)
             self.last_problem_stats["interpolation_time"] = time.time() - start_time
-        path = path_as_python(path, self.robot_type.DOF)
+        path = path_as_python(path, self.robot_constants.DOF)
         if "python" in shortcut_strategy:
             start_time = time.time()
             path = self.shortcut(path, max_iterations=len(path))
@@ -234,8 +234,8 @@ class FrankaArmBase(Planner):
             path,
             lambda q: not self._not_in_collision(q),
             np.radians(3) * np.ones(7),
-            self.robot_type.VELOCITY_LIMIT,
-            self.robot_type.ACCELERATION_LIMIT,
+            self.robot_constants.VELOCITY_LIMIT,
+            self.robot_constants.ACCELERATION_LIMIT,
         )
         if fixed_timestep is None:
             assert num_timesteps is not None  # Needed for typechecking

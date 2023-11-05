@@ -1,6 +1,6 @@
 import time
 
-from robofin.kinematics.collision import FrankaCollisionSpheres
+from robofin.collision import FrankaCollisionSpheres
 
 
 class Planner:

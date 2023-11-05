@@ -1,9 +1,9 @@
+import numpy as np
 import pytest
 from geometrout.primitive import Cuboid
-from robofin.robots import FrankaRobot
-from robofin.bullet import Bullet
-import numpy as np
 from ompl.util import RNG
+from robofin.bullet import Bullet
+from robofin.robots import FrankaRobot
 
 import atob.planner as planners
 

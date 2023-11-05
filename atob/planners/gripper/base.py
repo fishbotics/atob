@@ -4,6 +4,7 @@ import numpy as np
 from geometrout.transform import SE3
 from ompl import base as ob
 from ompl import geometric as og
+from robofin.collision import franka_eef_collides_fast
 
 from atob.errors import CollisionError, ConfigurationError
 from atob.planners.base import Planner
@@ -25,14 +26,25 @@ def pose_path_as_python(path):
 
 
 class FrankaGripperBase(Planner):
+    def __init__(self, prismatic_joint, buffer):
+        super().__init__()
+        self.prismatic_joint = prismatic_joint
+        self.buffer = buffer
+
     def _not_in_collision(self, q, frame):
         current_time = time.time()
-        self.sim_robot.marionette(q, frame)
-        ret = not self.sim.in_collision(self.sim_robot)
+        collision_free = not franka_eef_collides_fast(
+            q,
+            self.prismatic_joint,
+            self.cooo,
+            self.scene_obstacle_arrays,
+            frame,
+            self.buffer,
+        )
         total_time = time.time() - current_time
         self.total_collision_checking_time += total_time
         self.collision_check_counts += 1
-        return ret
+        return collision_free
 
     def plan(
         self,
