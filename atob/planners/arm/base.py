@@ -4,7 +4,7 @@ import time
 import numpy as np
 from ompl import base as ob
 from ompl import geometric as og
-from robofin.kinematics.collision import franka_arm_collides_fast
+from robofin.collision import franka_arm_collides_fast
 from robofin.robot_constants import FrankaConstants, RealFrankaConstants
 
 from atob.caelan_smoothing import smooth_cubic
