@@ -40,14 +40,16 @@ def steer_to(start, end, threshold=0.1):
 
 
 class FrankaArmBase(Planner):
-    def __init__(self, prismatic_joint, buffer, real=True):
+    def __init__(self, prismatic_joint, buffer, real=True, joint_range_scalar=1.0):
         super().__init__()
         self.prismatic_joint = prismatic_joint
         self.buffer = buffer
+        self.joint_range_scalar = joint_range_scalar
         if real:
             self.robot_constants = RealFrankaConstants
         else:
             self.robot_constants = FrankaConstants
+        self.joint_limits = self.joint_range_scalar * self.robot_constants.JOINT_LIMITS
 
     def _not_in_collision(self, q):
         current_time = time.time()
@@ -61,7 +63,7 @@ class FrankaArmBase(Planner):
 
     def check_within_range(self, q):
         for ii in range(self.robot_constants.DOF):
-            low, high = self.robot_constants.JOINT_LIMITS[ii]
+            low, high = self.joint_limits[ii]
             if q[ii] < low or q[ii] > high:
                 return False
         return True
@@ -72,13 +74,13 @@ class FrankaArmBase(Planner):
             raise Exception("Scene not set up yet. Load scene before planning")
         # Verify start state is valid
         if not self.check_within_range(start):
-            raise ConfigurationError(start, self.robot_constants.JOINT_LIMITS)
+            raise ConfigurationError(start, self.joint_limits)
         if not self._not_in_collision(start):
             raise CollisionError(start)
 
         # Verify goal state is valid
         if not self.check_within_range(goal):
-            raise ConfigurationError(goal, self.robot_constants.JOINT_LIMITS)
+            raise ConfigurationError(goal, self.joint_limits)
         if not self._not_in_collision(goal):
             raise CollisionError(goal)
 
@@ -88,7 +90,7 @@ class FrankaArmBase(Planner):
         # Set the boundaries on the state space via the joint limits
         bounds = ob.RealVectorBounds(self.robot_constants.DOF)
         for ii in range(self.robot_constants.DOF):
-            low, high = self.robot_constants.JOINT_LIMITS[ii]
+            low, high = self.joint_limits[ii]
             # TODO don't commit this change without thinking it through
             # ideally starts and goals should never be at the joint limits
             bounds.setLow(ii, low)
