@@ -4,7 +4,6 @@ import time
 import numpy as np
 from ompl import base as ob
 from ompl import geometric as og
-from robofin.collision import franka_arm_collides_fast
 from robofin.robot_constants import FrankaConstants, RealFrankaConstants
 
 from atob.caelan_smoothing import smooth_cubic
@@ -40,10 +39,19 @@ def steer_to(start, end, threshold=0.1):
 
 
 class FrankaArmBase(Planner):
-    def __init__(self, prismatic_joint, buffer, real=True, joint_range_scalar=1.0):
+    def __init__(
+        self,
+        prismatic_joint,
+        scene_buffer,
+        self_collision_buffer,
+        *,
+        real=True,
+        joint_range_scalar=1.0,
+    ):
         super().__init__()
         self.prismatic_joint = prismatic_joint
-        self.buffer = buffer
+        self.scene_buffer = scene_buffer
+        self.self_collision_buffer = self_collision_buffer
         self.joint_range_scalar = joint_range_scalar
         if real:
             self.robot_constants = RealFrankaConstants
@@ -53,8 +61,12 @@ class FrankaArmBase(Planner):
 
     def _not_in_collision(self, q):
         current_time = time.time()
-        collision_free = not franka_arm_collides_fast(
-            q, self.prismatic_joint, self.cooo, self.scene_obstacle_arrays, self.buffer
+        collision_free = not self.cooo.franka_arm_collides_fast(
+            q,
+            self.prismatic_joint,
+            self.scene_obstacle_arrays,
+            scene_buffer=self.scene_buffer,
+            self_collision_buffer=self.self_collision_buffer,
         )
         total_time = time.time() - current_time
         self.total_collision_checking_time += total_time

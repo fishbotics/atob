@@ -4,7 +4,6 @@ import numpy as np
 from geometrout.transform import SE3
 from ompl import base as ob
 from ompl import geometric as og
-from robofin.collision import franka_eef_collides_fast
 
 from atob.errors import CollisionError, ConfigurationError
 from atob.planners.base import Planner
@@ -33,13 +32,12 @@ class FrankaGripperBase(Planner):
 
     def _not_in_collision(self, q, frame):
         current_time = time.time()
-        collision_free = not franka_eef_collides_fast(
+        collision_free = not self.cooo.franka_eef_collides_fast(
             q,
             self.prismatic_joint,
-            self.cooo,
             self.scene_obstacle_arrays,
             frame,
-            self.buffer,
+            scene_buffer=self.buffer,
         )
         total_time = time.time() - current_time
         self.total_collision_checking_time += total_time
